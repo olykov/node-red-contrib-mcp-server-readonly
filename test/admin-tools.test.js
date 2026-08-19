@@ -94,14 +94,29 @@ describe('lib/admin-tools read-only boundary', function () {
         assert.deepStrictEqual(calls, []);
     });
 
-    it('sends the admin token as a bearer header', async function () {
+    it('sends the configured admin token to the loopback admin API', async function () {
+        delete process.env.NODE_RED_ADMIN_API_TOKEN;
+        const inspected = [];
+        const httpRequest = async (method, hostname, port, path, headers) => {
+            inspected.push({ hostname, headers });
+            return { status: 200, body: {} };
+        };
+        const tools = createAdminTools({ adminPort: 1880, getAdminToken: () => 'sekret', httpRequest });
+        await tools.callTool('get_flow', {});
+        assert.strictEqual(inspected[0].hostname, '127.0.0.1');
+        assert.strictEqual(inspected[0].headers.Authorization, 'Bearer sekret');
+    });
+
+    it('prefers NODE_RED_ADMIN_API_TOKEN over node credentials', async function () {
+        process.env.NODE_RED_ADMIN_API_TOKEN = 'env-token';
         const inspected = [];
         const httpRequest = async (method, hostname, port, path, headers) => {
             inspected.push(headers);
             return { status: 200, body: {} };
         };
-        const tools = createAdminTools({ adminPort: 1880, getAdminToken: () => 'sekret', httpRequest });
+        const tools = createAdminTools({ adminPort: 1880, getAdminToken: () => 'credential-token', httpRequest });
         await tools.callTool('get_flow', {});
-        assert.strictEqual(inspected[0].Authorization, 'Bearer sekret');
+        assert.strictEqual(inspected[0].Authorization, 'Bearer env-token');
+        delete process.env.NODE_RED_ADMIN_API_TOKEN;
     });
 });
