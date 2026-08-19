@@ -1,0 +1,57 @@
+{
+  "name": "@olykov/node-red-contrib-mcp-server-readonly",
+  "version": "1.7.3",
+  "description": "Generic Model Context Protocol (MCP) server nodes for Node-RED: expose flows as MCP tools behind an OAuth-protected endpoint, with optional read-only Node-RED admin flow inspection.",
+  "keywords": [
+    "node-red",
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "oauth"
+  ],
+  "author": "Fredrik Furtenbach",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olykov/node-red-contrib-mcp-server-readonly.git"
+  },
+  "bugs": {
+    "url": "https://github.com/olykov/node-red-contrib-mcp-server-readonly/issues"
+  },
+  "homepage": "https://github.com/olykov/node-red-contrib-mcp-server-readonly#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "nodes/",
+    "lib/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "eslint nodes lib test scripts && node --require ./test/setup-node-test.js --test \"test/**/*.test.js\"",
+    "postpublish": "node --env-file=.env scripts/bsky-announce.js",
+    "test:announce": "node --env-file=.env scripts/bsky-announce.js",
+    "lint": "eslint nodes lib test scripts"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "node-red": {
+    "version": ">=2.2.0",
+    "nodes": {
+      "mcp-server": "nodes/mcp-server.js",
+      "mcp-in": "nodes/mcp-in.js",
+      "mcp-out": "nodes/mcp-out.js"
+    }
+  },
+  "dependencies": {
+    "jose": "^6.2.3"
+  },
+  "devDependencies": {
+    "@atproto/api": "^0.20.34",
+    "eslint": "^10.8.1",
+    "globals": "^17.11.0"
+  }
+}

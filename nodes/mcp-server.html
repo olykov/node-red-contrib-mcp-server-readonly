@@ -1,0 +1,298 @@
+<script type="text/html" data-template-name="mcp-server">
+    <ul style="min-width: 600px; margin-bottom: 20px;" id="mcpsrv-tabs"></ul>
+    <div id="mcpsrv-tabs-content" style="min-height: calc(100% - 95px);">
+
+        <!-- General tab -->
+        <div id="mcpsrv-tab-general" style="display:none">
+            <div class="form-row">
+                <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+                <input type="text" id="node-config-input-name" placeholder="My MCP Server">
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-path" style="width:150px"><i class="fa fa-link"></i> Path</label>
+                <input type="text" id="node-config-input-path" placeholder="jellyfin" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;" id="mcpsrv-path-hint">
+                <small>Registers endpoint: POST /mcp/&lt;path&gt;</small>
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-serverUrl" style="width:150px"><i class="fa fa-globe"></i> Server URL</label>
+                <input type="text" id="node-config-input-serverUrl" placeholder="https://nodered.example.com" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>Public base URL this Node-RED instance is reachable at (behind any reverse proxy). Used to build the OAuth discovery URLs advertised to MCP clients.</small>
+            </div>
+            <div class="form-row" style="margin-left:150px;">
+                <input type="checkbox" id="node-config-input-filterHost" style="width:23px; margin:0">
+                <label for="node-config-input-filterHost" style="margin:0; width:auto;"> Only serve requests for this hostname</label>
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>Off by default. When on, this node answers only requests whose <code>Host</code> header
+                matches the server URL above, so several nodes can share the same paths on one Node-RED
+                instance. Leave off unless you need that.</small>
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-serverName" style="width:150px"><i class="fa fa-server"></i> Server name</label>
+                <input type="text" id="node-config-input-serverName" placeholder="(defaults to mcp-&lt;path&gt;)" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-instructions" style="vertical-align:top; margin-top:4px; width:150px"><i class="fa fa-comment"></i> Instructions</label>
+                <textarea id="node-config-input-instructions" rows="3" style="width:calc(100% - 185px);" placeholder="Optional instructions for the model about this server."></textarea>
+            </div>
+        </div>
+
+        <!-- Auth tab -->
+        <div id="mcpsrv-tab-auth" style="display:none">
+            <div class="form-row">
+                <label for="node-config-input-issuerUrl" style="width:150px"><i class="fa fa-lock"></i> Identity provider</label>
+                <input type="text" id="node-config-input-issuerUrl" placeholder="https://idp.example.com (OIDC issuer URL)" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>OIDC issuer base URL; endpoints are auto-discovered from
+                <code>/.well-known/openid-configuration</code>. Required &mdash; an empty value breaks the
+                discovery documents advertised to MCP clients. For local testing without a real provider,
+                put any placeholder here and use the <b>Local debug token</b> below.</small>
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-clientId" style="width:150px"><i class="fa fa-id-card"></i> Client ID</label>
+                <input type="text" id="node-config-input-clientId" placeholder="Client ID" style="width:calc(100% - 185px)" autocomplete="off">
+            </div>
+            <!-- Client secrets are no longer supported: the open DCR endpoint made any
+                 configured secret world-readable. The hidden field stays so that saving
+                 the dialog submits an empty value, which deletes a previously stored
+                 secret (the editor only submits credential fields present in the DOM). -->
+            <input type="hidden" id="node-config-input-clientSecret">
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>The identity provider's client must be configured as a <b>public client with PKCE</b>, with the MCP client callback URL(s) (e.g. <code>https://claude.ai/api/mcp/auth_callback</code>) whitelisted there.</small>
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-scopes" style="width:150px"><i class="fa fa-list"></i> OIDC scopes</label>
+                <input type="text" id="node-config-input-scopes" placeholder="openid profile email" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>Space-separated list, advertised to clients as the scopes to request. Add e.g. <code>groups</code> to include group membership in the JWT &mdash; your provider must be configured to send that claim. Any <b>Required scope</b> below is added automatically; you do not repeat it here.</small>
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-audience" style="width:150px"><i class="fa fa-id-badge"></i> Token audience</label>
+                <input type="text" id="node-config-input-audience" placeholder="(defaults to Client ID)" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>Incoming tokens must carry this value in their <code>aud</code> claim. Empty defaults to
+                the <b>Client ID</b>, so tokens issued to other apps at the same provider are rejected; the
+                check is skipped only when both are empty.</small>
+            </div>
+
+            <div class="form-row" style="margin-bottom:4px;">
+                <label style="width:150px">&nbsp;</label>
+                <input type="checkbox" id="node-config-input-dcrShim" style="width:23px; margin:0">
+                <label for="node-config-input-dcrShim" style="margin:0; width:auto;"> Dynamic client registration shim</label>
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small><b>Leave this off unless you need it:</b> a client that cannot use CIMD, talking to a
+                provider that cannot do dynamic client registration itself. When on, this server advertises
+                <i>itself</i> as the authorization server &mdash; which breaks the RFC 9207 issuer check for
+                any client that enforces it.</small>
+            </div>
+
+            <hr style="margin:12px 0">
+
+            <div class="form-row">
+                <label for="node-config-input-localDebugToken" style="width:150px"><i class="fa fa-bug"></i> Local debug token</label>
+                <input type="password" id="node-config-input-localDebugToken" placeholder="(optional, skips OAuth locally)" style="width:calc(100% - 185px)" autocomplete="off">
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-localDebugGroups" style="width:150px"><i class="fa fa-users"></i> Debug groups</label>
+                <input type="text" id="node-config-input-localDebugGroups" placeholder="admin" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>Comma-separated <code>groups</code> claim granted to the debug token's user (default <code>admin</code>), so the access gates below — including per-tool lists on <code>mcp-in</code> nodes — can be exercised locally without a real identity provider.</small>
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-tokenCacheTTL" style="width:150px"><i class="fa fa-clock-o"></i> Token cache TTL</label>
+                <input type="number" id="node-config-input-tokenCacheTTL" style="width:80px" min="30" value="300"> seconds
+            </div>
+
+            <hr style="margin:12px 0">
+
+            <div class="form-row">
+                <label for="node-config-input-requiredClaim" style="width:150px"><i class="fa fa-user-secret"></i> Access claim</label>
+                <input type="text" id="node-config-input-requiredClaim" placeholder="groups" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-row">
+                <label for="node-config-input-requiredValue" style="width:150px"><i class="fa fa-check"></i> Server access</label>
+                <input type="text" id="node-config-input-requiredValue" placeholder="(empty = any authenticated user)" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>Comma-separated <b>any-of</b> list against the claim above. The claim must contain at least one of them for any tool on this server to be callable; unauthorized callers connect but see no tools. Empty (the default) allows every authenticated user. Tool and admin lists narrow it further, combined with <b>AND</b>.</small>
+            </div>
+
+            <div class="form-row">
+                <label for="node-config-input-requiredScope" style="width:150px"><i class="fa fa-check-circle"></i> Required scope</label>
+                <input type="text" id="node-config-input-requiredScope" placeholder="(empty = no scope required)" style="width:calc(100% - 185px)">
+            </div>
+            <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                <small>What the <i>client</i> was authorized to do, checked with <b>AND</b> on top of the claim above &mdash; so a read-only client cannot act for a user who may. Empty means no constraint; a required scope the token lacks is refused.</small>
+            </div>
+        </div>
+
+        <!-- Admin tab -->
+        <div id="mcpsrv-tab-admin" style="display:none">
+            <div class="form-row">
+                <label style="width:150px"><i class="fa fa-terminal"></i> Admin read-only API</label>
+                <input type="checkbox" id="node-config-input-adminToolsEnabled" style="width:23px; margin:0">
+                <label for="node-config-input-adminToolsEnabled" style="margin:0; width:auto;"> Enable Node-RED admin read-only API tools</label>
+            </div>
+            <div id="mcpsrv-admin-details">
+                <div class="form-row">
+                    <label for="node-config-input-adminToken" style="width:150px"><i class="fa fa-shield"></i> Admin token</label>
+                    <input type="password" id="node-config-input-adminToken" placeholder="NODE_RED_ADMIN_TOKEN" style="width:calc(100% - 185px)" autocomplete="off">
+                </div>
+                <div class="form-row">
+                    <label for="node-config-input-adminPort" style="width:150px"><i class="fa fa-plug"></i> Admin API port</label>
+                    <input type="number" id="node-config-input-adminPort" style="width:80px" min="1" max="65535" value="1880">
+                </div>
+                <div class="form-row">
+                    <label for="node-config-input-adminRequiredValue" style="width:150px"><i class="fa fa-check"></i> Read-only access</label>
+                    <input type="text" id="node-config-input-adminRequiredValue" placeholder="admin" style="width:calc(100% - 185px)">
+                </div>
+                <div class="form-tips" style="margin-left:150px; margin-bottom:8px;">
+                    <small>Comma-separated values of the <b>Access claim</b> named on the <b>Auth</b> tab — the caller's claim must contain at least one of them (default <code>admin</code>) for the admin read-only API tools to be callable. Applied <b>on top of</b> that tab's <b>Server access</b> list: callers must clear both. Leave empty to add no restriction beyond the server-wide gate.</small>
+                </div>
+                <div class="form-row" style="background:#fff8e1; border:1px solid #ffe082; border-radius:4px; padding:8px 12px; margin-top:4px;">
+                    <i class="fa fa-info-circle" style="color:#f9a825;"></i>
+                    <span style="font-size:12px; margin-left:6px;">
+                        Enabled admin tools: <strong>get_flow</strong> only.<br>
+                        This calls the Node-RED admin API on localhost:&lt;port&gt; using GET requests.
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="mcp-server">
+    <p>Config node hosting a standalone Model Context Protocol (MCP) server. Registers a
+    JSON-RPC endpoint at <code>POST /mcp/&lt;path&gt;</code> plus OAuth discovery/dynamic
+    client registration routes, so MCP clients (e.g. Claude) can authenticate and call the
+    tools defined by any <code>mcp-in</code>/<code>mcp-out</code> pair wired to this node.</p>
+    <p>Multiple <code>mcp-server</code> nodes can coexist — each gets its own path and its
+    own independent auth configuration, so different integrations can be isolated from each
+    other.</p>
+    <p>Enable <b>Admin read-only API</b> to additionally expose <code>get_flow</code>,
+    which lets an authorized caller read Node-RED flow tabs via the Admin HTTP API.</p>
+    <h3>MCP authentication</h3>
+    <p>The issuer is always verified against the discovered identity provider, and the audience
+    against the <b>Token audience</b> field (defaulting to the <b>Client ID</b>). The provider is
+    never contacted when the <b>Local debug token</b> matches, which is what makes local testing
+    possible without a real one — put any placeholder in <b>Issuer URL</b> and rely on the debug
+    token. Discovery falls back to Pocket ID's path layout if
+    <code>/.well-known/openid-configuration</code> is unavailable.</p>
+
+    <p>The <b>dynamic client registration shim</b> is off by default and should stay off. Turned on,
+    this server advertises itself as the authorization server and answers the registration endpoint
+    with your pre-registered client — the only way a client that cannot do CIMD can obtain a client
+    ID against a provider with no registration endpoint of its own. The cost is that the
+    <code>iss</code> your provider returns no longer matches the issuer the client discovered here,
+    so any client enforcing
+    <a href="https://datatracker.ietf.org/doc/html/rfc9207" target="_blank">RFC 9207</a> (required
+    by MCP 2026-07-28) refuses to finish the flow. With it off, clients are sent straight to the
+    provider and must use CIMD or a pre-registered client ID.</p>
+
+    <p><b>Hostname filtering</b> lets several servers share the same paths on one Node-RED instance,
+    split by <code>Host</code> header. Leave it off when a reverse proxy rewrites that header, or
+    nothing will match.</p>
+
+    <h3>Access gates</h3>
+    <p>Two independent axes, checked with <b>AND</b>. The <b>claim</b> axis asks what the
+    <i>user</i> may do; the <b>scope</b> axis asks what the <i>client</i> was authorized to do on
+    their behalf. Keeping them apart is what stops a client holding a read-only scope from acting
+    for a user who may write — delegation, not impersonation.</p>
+
+    <p><b>Access claim</b> names one claim that every list on this server matches against, with a
+    comma-separated any-of list of its values per gate: <b>Server access</b> (Auth tab),
+    <b>Tool access</b> on each <code>mcp-in</code> node, and <b>Read-only access</b> (Admin tab). Those
+    are combined with AND too, so a tool is reachable only by a caller who clears both the server's
+    list and the tool's own. An empty list imposes no restriction. Tools a caller cannot reach are
+    hidden from <code>tools/list</code>. If the identity provider nests its roles, address them with
+    a dotted claim path such as <code>realm_access.roles</code>.</p>
+
+    <p><b>Required scope</b> is matched against the token's <code>scope</code> claim, falling back
+    to <code>scp</code> when that is absent (Microsoft Entra, Okta). The claim name is not
+    configurable because it is standardised
+    (<a href="https://datatracker.ietf.org/doc/html/rfc9068" target="_blank">RFC 9068</a>); the value
+    may be a space-delimited string or an array. A required scope the token does not carry is
+    refused, including when the token has no scope claim at all.</p>
+</script>
+
+<script type="text/javascript">
+    RED.nodes.registerType('mcp-server', {
+        category: 'config',
+        defaults: {
+            name              : { value: '' },
+            path              : { value: '', required: true },
+            serverUrl         : { value: '', required: true },
+            filterHost        : { value: false },
+            serverName        : { value: '' },
+            instructions      : { value: '' },
+            issuerUrl         : { value: '', required: true },
+            scopes            : { value: 'openid profile email' },
+            audience          : { value: '' },
+        dcrShim           : { value: false },
+            tokenCacheTTL     : { value: 300 },
+            localDebugGroups  : { value: 'admin' },
+            requiredClaim     : { value: 'groups' },
+            requiredValue     : { value: '' },
+        requiredScope     : { value: '' },
+            adminToolsEnabled : { value: false },
+            adminPort         : { value: 1880 },
+            adminRequiredValue: { value: 'admin' }
+        },
+        credentials: {
+            clientId       : { type: 'text' },
+            clientSecret   : { type: 'password' },
+            adminToken     : { type: 'password' },
+            localDebugToken: { type: 'password' }
+        },
+        label: function () {
+            return this.name || '/mcp/' + (this.path || '?');
+        },
+        oneditprepare: function () {
+            // A node saved before this switch existed has no dcrShim property, and Node-RED does
+            // not backfill declared defaults into nodes that predate them. Left alone the box
+            // would render unchecked and the first Done would silently turn off a shim the
+            // install has been relying on — so an absent value is shown as on, matching what the
+            // runtime does with it.
+            if (this.dcrShim === undefined) {
+                $('#node-config-input-dcrShim').prop('checked', true);
+            }
+            var tabs = RED.tabs.create({
+                id: 'mcpsrv-tabs',
+                onchange: function (tab) {
+                    $('#mcpsrv-tabs-content').children().hide();
+                    $('#' + tab.id).show();
+                }
+            });
+            tabs.addTab({ id: 'mcpsrv-tab-general', label: 'General' });
+            tabs.addTab({ id: 'mcpsrv-tab-auth',    label: 'Auth' });
+            tabs.addTab({ id: 'mcpsrv-tab-admin',   label: 'Admin' });
+
+            // Client secrets are deprecated: blank the hidden field (the editor pre-fills
+            // it with the __PWRD__ placeholder when a secret is stored) so saving the
+            // dialog submits '' and deletes any previously stored secret.
+            $('#node-config-input-clientSecret').val('');
+
+            function updatePathHint() {
+                var path = $('#node-config-input-path').val() || '<path>';
+                $('#mcpsrv-path-hint small').text('Registers endpoint: POST /mcp/' + path);
+            }
+            $('#node-config-input-path').on('input', updatePathHint);
+            updatePathHint();
+
+            function toggleAdmin() {
+                $('#mcpsrv-admin-details').toggle($('#node-config-input-adminToolsEnabled').is(':checked'));
+            }
+            $('#node-config-input-adminToolsEnabled').on('change', toggleAdmin);
+            toggleAdmin();
+        }
+    });
+</script>

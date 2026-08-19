@@ -1,0 +1,56 @@
+<script type="text/html" data-template-name="mcp-out">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-mcpServer"><i class="fa fa-server"></i> MCP Server</label>
+        <input type="text" id="node-input-mcpServer">
+    </div>
+    <div class="form-row">
+        <label for="node-input-emptyMessage"><i class="fa fa-comment-o"></i> Empty response</label>
+        <input type="text" id="node-input-emptyMessage" placeholder="No results found.">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="mcp-out">
+    <p>Resolves a pending tool call started by an <code>mcp-in</code> node, sending the
+    result back to the waiting MCP client. This is a terminal node — it has no output.</p>
+    <p>The input message must carry <code>msg._mcpCallId</code> unchanged from the
+    <code>mcp-in</code> node that started the call, and this node's <b>MCP Server</b> must be
+    the <em>same</em> config node as that <code>mcp-in</code>'s. If either doesn't match, the
+    call can never be found and resolved — the caller eventually sees a timeout, and this node
+    logs an error if <code>_mcpCallId</code> is missing entirely.</p>
+    <p><code>msg.payload</code> is converted to the tool result based on its shape:</p>
+    <ul>
+        <li>empty (<code>null</code>/<code>undefined</code>/<code>''</code>/<code>[]</code>) — replaced with
+        <b>Empty response</b> below (or <code>msg.emptyMessage</code>, if set, as a per-message override).</li>
+        <li>array — passed through as-is as the MCP <code>content</code> array, e.g. for
+        image/media results. Every element must then be a valid MCP content block
+        (<code>{"type":"text","text":...}</code>, <code>{"type":"image",...}</code>, …) — a plain
+        array of values is not wrapped for you and gives the client a confusing protocol error.
+        To return a list as data, send it JSON-stringified instead.</li>
+        <li>string — sent as-is.</li>
+        <li>object — sent as a JSON string.</li>
+    </ul>
+    <p>No timeout handling is needed here — if this node never receives the matching message,
+    the <code>mcp-in</code> node's own <b>Timeout</b> setting eventually fails the call on the
+    client's behalf.</p>
+</script>
+
+<script type="text/javascript">
+    RED.nodes.registerType('mcp-out', {
+        category: 'MCP',
+        color: '#b3b3ff',
+        defaults  : {
+            name        : { value: '' },
+            mcpServer   : { value: '', type: 'mcp-server', required: true },
+            emptyMessage: { value: 'No results found.' }
+        },
+        inputs    : 1,
+        outputs   : 0,
+        icon      : 'font-awesome/fa-sign-in',
+        paletteLabel: 'MCP Out',
+        label     : function () { return this.name || 'MCP Out'; }
+    });
+</script>
