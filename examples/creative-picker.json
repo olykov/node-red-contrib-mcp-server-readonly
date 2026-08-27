@@ -14,7 +14,7 @@
     "serverUrl": "",
     "filterHost": false,
     "serverName": "Creative picker",
-    "instructions": "Use creative_picker to render a small set of creative variants. The tool remains useful without a UI because it returns structured options.",
+    "instructions": "Use creative_picker to show a native single-select image picker. The selected ID returns in the same tool call.",
     "issuerUrl": "",
     "redirectUris": "https://claude.ai/api/mcp/auth_callback",
     "scopes": "openid profile email",
@@ -30,11 +30,11 @@
     "id": "creative-picker-in",
     "type": "mcp-in",
     "z": "creative-picker-tab",
-    "name": "Render creative picker",
+    "name": "Request a creative selection",
     "mcpServer": "creative-picker-server",
     "toolName": "creative_picker",
-    "description": "Render a picker for three creative directions. Returns structured options even when the host cannot render MCP Apps UI.",
-    "inputSchema": "{\"type\":\"object\",\"properties\":{\"selectionMode\":{\"type\":\"string\",\"enum\":[\"single\",\"multiple\"],\"default\":\"single\"}}}",
+    "description": "Show exactly one native Codex image-picker form and return its selected variant ID in the same tool call.",
+    "inputSchema": "{\"type\":\"object\",\"required\":[\"variants\"],\"additionalProperties\":false,\"properties\":{\"variants\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":6,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"id\",\"title\",\"image\"],\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100},\"title\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":200},\"description\":{\"type\":\"string\",\"maxLength\":500},\"image\":{\"type\":\"string\",\"description\":\"A trusted image data URL, for example data:image/png;base64,...\"}}}},\"message\":{\"type\":\"string\",\"maxLength\":500}}}",
     "topic": "",
     "timeout": 30,
     "requiredValue": "",
@@ -51,8 +51,8 @@
     "id": "creative-picker-function",
     "type": "function",
     "z": "creative-picker-tab",
-    "name": "Build picker result",
-    "func": "const selectionMode = msg.payload?.selectionMode === 'multiple' ? 'multiple' : 'single';\nconst options = [\n  { id: 'option_a', label: 'A \u2014 Action-led', description: 'The person and moment of action are primary.' },\n  { id: 'option_b', label: 'B \u2014 Context-led', description: 'The environment and atmosphere are primary.' },\n  { id: 'option_c', label: 'C \u2014 Balanced', description: 'Equal emphasis on person, action, and environment.' }\n];\nmsg.mcpResult = {\n  content: [{ type: 'text', text: 'Choose one or more creative directions.' }],\n  structuredContent: { title: 'Choose creative variants', selectionMode, options, allowCustomFeedback: true },\n  _meta: { ui: { resourceUri: 'ui://creative-picker/variants.html' } }\n};\nreturn msg;",
+    "name": "Build native image picker",
+    "func": "const input = msg.payload || {};\nconst variants = Array.isArray(input.variants) ? input.variants : [];\nconst seen = new Set();\nconst items = [];\nfor (const variant of variants) {\n  if (!variant || typeof variant !== 'object') continue;\n  const id = typeof variant.id === 'string' ? variant.id.trim() : '';\n  const title = typeof variant.title === 'string' ? variant.title.trim() : '';\n  const image = typeof variant.image === 'string' ? variant.image.trim() : '';\n  const description = typeof variant.description === 'string' ? variant.description.trim() : '';\n  if (!id || !title || !/^data:image\\/(png|jpeg|webp);base64,/i.test(image) || seen.has(id)) continue;\n  seen.add(id);\n  items.push({ id, title, ...(description ? { description } : {}), image });\n}\nif (!items.length) {\n  msg.mcpResult = { content: [{ type: 'text', text: 'No valid image variants were provided.' }], isError: true };\n  return msg;\n}\nmsg.mcpElicitation = {\n  mode: 'openai/form',\n  message: typeof input.message === 'string' && input.message.trim() ? input.message.trim() : 'Choose one creative variant.',\n  requestedSchema: {\n    type: 'object',\n    properties: {\n      creative: { type: 'openai/imagePicker', title: 'Creative variant', items }\n    },\n    required: ['creative']\n  }\n};\nreturn msg;",
     "outputs": 1,
     "timeout": 0,
     "noerr": 0,
@@ -76,58 +76,6 @@
     "emptyMessage": "No creative variants available.",
     "x": 700,
     "y": 100,
-    "wires": []
-  },
-  {
-    "id": "creative-picker-submit-in",
-    "type": "mcp-in",
-    "z": "creative-picker-tab",
-    "name": "Accept picker selection",
-    "mcpServer": "creative-picker-server",
-    "toolName": "creative_picker_submit",
-    "description": "Validate and return the user's creative-picker selection. Does not persist or publish anything.",
-    "inputSchema": "{\"type\":\"object\",\"required\":[\"selectedIds\"],\"properties\":{\"selectionMode\":{\"type\":\"string\",\"enum\":[\"single\",\"multiple\"]},\"selectedIds\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":1},\"feedback\":{\"type\":\"string\",\"maxLength\":2000}}}",
-    "topic": "",
-    "timeout": 30,
-    "requiredValue": "",
-    "exposeClaims": false,
-    "x": 150,
-    "y": 220,
-    "wires": [
-      [
-        "creative-picker-submit-function"
-      ]
-    ]
-  },
-  {
-    "id": "creative-picker-submit-function",
-    "type": "function",
-    "z": "creative-picker-tab",
-    "name": "Validate selection",
-    "func": "const allowed = new Set(['option_a', 'option_b', 'option_c']);\nconst input = msg.payload || {};\nconst selectedIds = Array.isArray(input.selectedIds) ? [...new Set(input.selectedIds.filter(id => typeof id === 'string'))] : [];\nconst selectionMode = input.selectionMode === 'multiple' ? 'multiple' : 'single';\nconst invalid = selectedIds.filter(id => !allowed.has(id));\nif (!selectedIds.length || invalid.length || (selectionMode === 'single' && selectedIds.length !== 1)) {\n  msg.mcpResult = { content: [{ type: 'text', text: 'Invalid creative-picker selection.' }], isError: true };\n  return msg;\n}\nconst feedback = typeof input.feedback === 'string' ? input.feedback.trim().slice(0, 2000) : '';\nmsg.mcpResult = {\n  content: [{ type: 'text', text: `Selected: ${selectedIds.join(', ')}.` }],\n  structuredContent: { selectedIds, selectionMode, feedback, message: 'Selection saved for the current conversation only.' }\n};\nreturn msg;",
-    "outputs": 1,
-    "timeout": 0,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 420,
-    "y": 220,
-    "wires": [
-      [
-        "creative-picker-submit-out"
-      ]
-    ]
-  },
-  {
-    "id": "creative-picker-submit-out",
-    "type": "mcp-out",
-    "z": "creative-picker-tab",
-    "name": "",
-    "mcpServer": "creative-picker-server",
-    "emptyMessage": "No selection received.",
-    "x": 700,
-    "y": 220,
     "wires": []
   }
 ]

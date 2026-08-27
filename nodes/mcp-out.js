@@ -20,6 +20,17 @@ module.exports = function (RED) {
                 node.status({ fill: 'red', shape: 'dot', text: 'missing _mcpCallId' });
                 return;
             }
+            if (msg.mcpElicitation !== undefined) {
+                if (!msg.mcpElicitation || typeof msg.mcpElicitation !== 'object' || Array.isArray(msg.mcpElicitation)) {
+                    node.error('msg.mcpElicitation must be an elicitation object');
+                    node.status({ fill: 'red', shape: 'dot', text: 'invalid mcpElicitation' });
+                    return;
+                }
+                mcpServer.resolveMCPCall(callId, { mcpElicitation: msg.mcpElicitation });
+                node.status({ fill: 'blue', shape: 'dot', text: 'waiting for user selection' });
+                return;
+            }
+
             if (msg.mcpResult !== undefined) {
                 if (!msg.mcpResult || typeof msg.mcpResult !== 'object' || Array.isArray(msg.mcpResult)) {
                     node.error('msg.mcpResult must be an MCP tool-result object');

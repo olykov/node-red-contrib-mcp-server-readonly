@@ -217,17 +217,44 @@ block (or combine with [hostname filtering](#hostname-filtering) above).
 > **Hermes** (MCP clients). Any spec-compliant OIDC provider issuing JWT access tokens, behind
 > any reverse proxy that forwards the routes above, should work the same way.
 
-## MCP Apps UI resources
+## Native interactive forms
 
-`mcp-out` normally turns `msg.payload` into text or MCP content blocks. For an MCP Apps response,
-set `msg.mcpResult` instead to a complete tool-result object. It passes through unchanged, so a
-render tool can return `content`, `structuredContent`, and `_meta.ui.resourceUri` together.
+The MCP endpoint uses sessionful **Streamable HTTP** (MCP 2025-06-18). This lets a Node-RED flow
+pause a `tools/call`, ask the host for input with MCP `elicitation/create`, and resume the same
+call after the user responds.
 
-This package serves the bundled `ui://creative-picker/variants.html` resource through
-`resources/read` with `text/html;profile=mcp-app`. It is a static iframe resource, not a public
-Node-RED page. The included picker is a reference: it receives structured results through the
-MCP Apps bridge and calls `creative_picker_submit` through `tools/call`; it does not persist data
-on its own. Keep every tool useful without its UI for hosts that do not render MCP Apps.
+For Codex's native single-image picker, have the flow connected to `mcp-in` set:
+
+```js
+msg.mcpElicitation = {
+  mode: 'openai/form',
+  message: 'Choose one creative variant.',
+  requestedSchema: {
+    type: 'object',
+    properties: {
+      creative: {
+        type: 'openai/imagePicker',
+        title: 'Creative variant',
+        items: [
+          { id: 'variant_a', title: 'Variant A', image: 'data:image/png;base64,...' }
+        ]
+      }
+    },
+    required: ['creative']
+  }
+};
+return msg;
+```
+
+Send that message to `mcp-out`. The server verifies that the client negotiated the
+`openai/form` extension, then returns the eventual answer as the original tool's
+`structuredContent.selection` (for example, `{ creative: 'variant_a' }`). A client that does not
+advertise that extension receives an explicit tool error; the flow does not silently fall back to
+an HTML picker.
+
+`msg.mcpResult` remains available for ordinary non-interactive MCP tool results. The bundled
+MCP Apps HTML resource is retained only as a separate backwards-compatible resource API; the
+native picker example does not use it.
 
 ## Examples
 

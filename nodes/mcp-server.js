@@ -7,9 +7,9 @@ const pkgVersion = require('../package.json').version;
 const { createMcpAuth }              = require('../lib/mcp-auth');
 const { createHttpGuards, hostFilter } = require('../lib/http-guards');
 const { createAdminTools }           = require('../lib/admin-tools');
-const { handleRpc }                  = require('../lib/mcp-rpc');
 const { MCP_APP_RESOURCES }          = require('../lib/mcp-app-resources');
-const { requiredScopeChallenge, advertisedScopes } = require('../lib/claim-gate');
+const { requiredScopeChallenge, advertisedScopes, createToolGate } = require('../lib/claim-gate');
+const { createStreamableMcpServer }  = require('../lib/mcp-streamable');
 const {
     buildProtectedResourceMetadata,
     buildAuthorizationServerMetadata,
@@ -74,7 +74,6 @@ module.exports = function (RED) {
         const publicBase   = (config.serverUrl || '').replace(/\/$/, '');
         const resourceUrl  = publicBase + mcpRoutePath;
         const serverName   = config.serverName || ('mcp-' + (config.path || 'server'));
-        const instructions = config.instructions || '';
 
         const wellKnownPaths = name => [
             mcpRoutePath + '/.well-known/' + name,
@@ -204,6 +203,9 @@ module.exports = function (RED) {
                 requiredValue : requiredValue || '',
                 ownerId
             };
+            if (node.streamableMcp) {
+                node.streamableMcp.registerDynamicTool(name, node.mcpRegisteredTools[name]);
+            }
         };
 
         node.unregisterMCPTool = function (name, ownerId) {
@@ -291,13 +293,13 @@ module.exports = function (RED) {
         }
 
         // ── MCP JSON-RPC endpoint ───────────────────────────────────────────────
-        // The dispatch logic lives in lib/mcp-rpc.js (unit-testable); this handler is glue:
-        // authenticate, delegate, write the described response. callTool is the one real
-        // side effect — the pending-call promise resolved by mcp-out via resolveMCPCall.
-        const rpcDeps = {
+        // Stateful Streamable HTTP replaces the former one-request/one-JSON dispatcher.
+        // A native Codex image picker is a server-to-client elicitation request, so its
+        // response travels on the in-flight tools/call SSE stream and returns to the
+        // same Node-RED call after the user clicks Continue.
+        const streamableDeps = {
             serverName,
             serverVersion : pkgVersion,
-            instructions,
             requiredClaim,
             requiredValue,
             requiredScope,
@@ -306,7 +308,13 @@ module.exports = function (RED) {
             adminTools,
             tools     : node.mcpRegisteredTools,
             resources : MCP_APP_RESOURCES,
-            status    : s => node.status(s),
+            warn      : message => node.warn(message),
+            allows    : (claims, toolRequiredValue) => createToolGate({
+                claims,
+                claimName   : requiredClaim,
+                serverValue : requiredValue,
+                serverScope : requiredScope
+            }).allows(toolRequiredValue),
             callTool: (toolName, timeoutMs, args, claims) => new Promise((resolve, reject) => {
                 const callId = crypto.randomBytes(16).toString('hex');
                 const timer  = setTimeout(() => {
@@ -317,16 +325,20 @@ module.exports = function (RED) {
                 node.emit('mcp_tool_' + toolName, { args, _mcpCallId: callId, _mcpClaims: claims });
             })
         };
+        node.streamableMcp = createStreamableMcpServer(streamableDeps);
 
         node.log('mcp-server registering route: POST ' + mcpRoutePath);
-        RED.httpNode.post(mcpRoutePath, ownedHostFilter, rateLimit('mcp', 300), maxBody(1024 * 1024), async (req, res) => {
+        const streamableHandler = async (req, res) => {
             const claims = await requireBearer(req, res);
             if (!claims) return;
-            const out = await handleRpc(req.body, claims, rpcDeps);
-            if (out.headers) res.set(out.headers);
-            res.status(out.status);
-            return out.body !== undefined ? res.json(out.body) : res.send('');
-        });
+            return node.streamableMcp.handleRequest(req, res, req.body, claims);
+        };
+        RED.httpNode.post(mcpRoutePath, ownedHostFilter, rateLimit('mcp', 300), maxBody(1024 * 1024), streamableHandler);
+        // GET is part of the Streamable HTTP endpoint surface. The picker itself
+        // uses the request-scoped POST SSE stream, but accepting GET preserves the
+        // official transport contract for clients that open a standalone stream.
+        node.log('mcp-server registering route: GET ' + mcpRoutePath);
+        RED.httpNode.get(mcpRoutePath, ownedHostFilter, rateLimit('mcp', 300), streamableHandler);
 
         node.status({ fill: 'green', shape: 'dot', text: mcpRoutePath });
 
@@ -337,10 +349,12 @@ module.exports = function (RED) {
             }
             node.mcpPendingCalls = Object.create(null);
             auth.clearCache();
+            void node.streamableMcp.close();
             for (const p of resourceMetadataPaths) { removeRoute(RED, 'get', p, node.id); }
             for (const p of authServerPaths)       { removeRoute(RED, 'get', p, node.id); }
             removeRoute(RED, 'post', registerPath, node.id);
             removeRoute(RED, 'post', mcpRoutePath, node.id);
+            removeRoute(RED, 'get', mcpRoutePath, node.id);
         });
     }
 
