@@ -5,6 +5,7 @@ const { describe, it } = require('node:test');
 
 const {
     OPENAI_FORM_TIMEOUT_MS,
+    capabilitySummary,
     hasOpenAIFormCapability,
     isOpenAIForm,
     resolveFlowResult
@@ -36,6 +37,13 @@ describe('lib/mcp-streamable native OpenAI form elicitation', () => {
             extensions : { 'openai/form': {} }
         }) } }), true);
         assert.equal(hasOpenAIFormCapability({ server: { getClientCapabilities: () => ({}) } }), false);
+        assert.deepEqual(capabilitySummary({ server: { getClientCapabilities: () => ({
+            elicitation : {},
+            extensions  : { 'openai/form': {}, other: {} }
+        }) } }), {
+            keys          : ['elicitation', 'extensions'],
+            extensionKeys : ['openai/form', 'other']
+        });
     });
 
     it('accepts only an OpenAI form-shaped flow payload', () => {
@@ -64,13 +72,34 @@ describe('lib/mcp-streamable native OpenAI form elicitation', () => {
         });
     });
 
-    it('fails closed when the client did not advertise openai/form', async () => {
+    it('does not block before sending when openai/form is not advertised', async () => {
+        const sent = [];
         const result = await resolveFlowResult(
-            { mcpReq: { send: async () => { throw new Error('must not request'); } } },
-            { server: { getClientCapabilities: () => ({}) } },
+            { mcpReq: { send: async request => {
+                sent.push(request);
+                return { action: 'accept', content: { creative: 'creative_a' } };
+            } } },
+            { server: { getClientCapabilities: () => ({ elicitation: {} }) } },
             { mcpElicitation: picker }
         );
+
+        assert.deepEqual(sent, [{ method: 'elicitation/create', params: picker }]);
+        assert.deepEqual(result.structuredContent, {
+            action : 'accept',
+            selection : { creative: 'creative_a' }
+        });
+    });
+
+    it('returns the actual send error with sanitized capability keys', async () => {
+        const result = await resolveFlowResult(
+            { mcpReq: { send: async () => { throw new Error('boom'); } } },
+            { server: { getClientCapabilities: () => ({ elicitation: {}, extensions: { other: {} } }) } },
+            { mcpElicitation: picker }
+        );
+
         assert.equal(result.isError, true);
-        assert.match(result.content[0].text, /does not support/);
+        assert.match(result.content[0].text, /OpenAI form elicitation failed: boom/);
+        assert.ok(result.content[0].text.includes('clientCapabilities keys: ["elicitation","extensions"]'));
+        assert.ok(result.content[0].text.includes('clientCapabilities.extensions keys: ["other"]'));
     });
 });
