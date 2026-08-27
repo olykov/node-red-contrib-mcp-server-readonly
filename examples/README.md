@@ -6,6 +6,7 @@ other custom module.
 
 | File | Integration | Default path |
 |---|---|---|
+| `creative-picker.json` | MCP Apps creative-variant picker | `/mcp/creative-picker` |
 | `jellyfin-mcp.json` | Jellyfin media server search + poster art | `/mcp/jellyfin` |
 | `calibre-mcp.json` | Calibre-Web ebook library | `/mcp/calibre` |
 | `docker-mcp.json` | Docker container list/start/stop/restart/logs | `/mcp/docker` |
@@ -15,6 +16,8 @@ other custom module.
 | `seerr-mcp.json` | Overseerr media requests | `/mcp/seerr` |
 | `sonarr-mcp.json` | Sonarr TV series/episodes | `/mcp/sonarr` |
 | `spotify-mcp.json` | Spotify playback + search (includes an OAuth callback flow) | `/mcp/spotify` |
+
+`creative-picker.json` is a static UI prototype: import it, configure its `mcp-server` node with your endpoint and identity provider, then call `creative_picker`. Its submit tool validates and returns the selection only; it does not persist or publish anything.
 
 Each `mcp-server` node already carries a server-level **Instructions** description of what
 that integration does — it's what an MCP client sees before it even lists tools, distinct

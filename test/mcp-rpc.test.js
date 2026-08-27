@@ -174,3 +174,54 @@ describe('lib/mcp-rpc tools/call', function () {
         assert.deepStrictEqual(out.body.error, { code: -32602, message: 'Invalid flow id' });
     });
 });
+
+
+describe('lib/mcp-rpc MCP Apps resources', function () {
+    const resourceUri = 'ui://creative-picker/variants.html';
+    const resources = {
+        [resourceUri]: {
+            uri: resourceUri,
+            name: 'Creative variant picker',
+            description: 'Picker',
+            mimeType: 'text/html;profile=mcp-app',
+            text: '<main>picker</main>',
+            _meta: { ui: { prefersBorder: true } }
+        }
+    };
+
+    it('advertises the resources capability and lists visible resources', async function () {
+        const initialized = await handleRpc({ id: 1, method: 'initialize' }, claims([]), deps({ resources }));
+        assert.deepStrictEqual(initialized.body.result.capabilities.resources, {});
+        const listed = await handleRpc({ id: 2, method: 'resources/list' }, claims([]), deps({ resources }));
+        assert.deepStrictEqual(listed.body.result.resources, [{
+            uri: resourceUri,
+            name: 'Creative variant picker',
+            description: 'Picker',
+            mimeType: 'text/html;profile=mcp-app'
+        }]);
+    });
+
+    it('returns a named MCP App resource and rejects unknown URIs', async function () {
+        const out = await handleRpc({ id: 3, method: 'resources/read', params: { uri: resourceUri } },
+            claims([]), deps({ resources }));
+        assert.deepStrictEqual(out.body.result.contents, [{
+            uri: resourceUri,
+            mimeType: 'text/html;profile=mcp-app',
+            text: '<main>picker</main>',
+            _meta: { ui: { prefersBorder: true } }
+        }]);
+        const missing = await handleRpc({ id: 4, method: 'resources/read', params: { uri: 'ui://missing' } },
+            claims([]), deps({ resources }));
+        assert.deepStrictEqual(missing.body.error, { code: -32602, message: 'Unknown resource: ui://missing' });
+    });
+
+    it('passes a full MCP tool-result envelope through unchanged', async function () {
+        const result = {
+            content: [{ type: 'text', text: 'Choose a variant.' }],
+            structuredContent: { selectionMode: 'single', options: [{ id: 'a' }] },
+            _meta: { ui: { resourceUri } }
+        };
+        const out = await call('open', { claims: claims([]), deps: deps({ callTool: async () => result }) });
+        assert.deepStrictEqual(out.body.result, result);
+    });
+});

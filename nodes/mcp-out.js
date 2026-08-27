@@ -20,6 +20,18 @@ module.exports = function (RED) {
                 node.status({ fill: 'red', shape: 'dot', text: 'missing _mcpCallId' });
                 return;
             }
+            if (msg.mcpResult !== undefined) {
+                if (!msg.mcpResult || typeof msg.mcpResult !== 'object' || Array.isArray(msg.mcpResult)) {
+                    node.error('msg.mcpResult must be an MCP tool-result object');
+                    node.status({ fill: 'red', shape: 'dot', text: 'invalid mcpResult' });
+                    return;
+                }
+                mcpServer.resolveMCPCall(callId, msg.mcpResult);
+                node.status({ fill: 'green', shape: 'dot', text: 'responded' });
+                setTimeout(() => node.status({ fill: 'grey', shape: 'ring', text: 'idle' }), 1000);
+                return;
+            }
+
             const payload = msg.payload;
             const isEmpty = payload === null || payload === undefined ||
                 (Array.isArray(payload) && payload.length === 0) ||

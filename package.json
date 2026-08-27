@@ -26,6 +26,7 @@
     "nodes/",
     "lib/",
     "examples/",
+    "resources/",
     "README.md",
     "LICENSE"
   ],

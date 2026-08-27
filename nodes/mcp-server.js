@@ -8,6 +8,7 @@ const { createMcpAuth }              = require('../lib/mcp-auth');
 const { createHttpGuards, hostFilter } = require('../lib/http-guards');
 const { createAdminTools }           = require('../lib/admin-tools');
 const { handleRpc }                  = require('../lib/mcp-rpc');
+const { MCP_APP_RESOURCES }          = require('../lib/mcp-app-resources');
 const { requiredScopeChallenge, advertisedScopes } = require('../lib/claim-gate');
 const {
     buildProtectedResourceMetadata,
@@ -303,8 +304,9 @@ module.exports = function (RED) {
             adminToolsEnabled,
             adminRequiredValue,
             adminTools,
-            tools  : node.mcpRegisteredTools,
-            status : s => node.status(s),
+            tools     : node.mcpRegisteredTools,
+            resources : MCP_APP_RESOURCES,
+            status    : s => node.status(s),
             callTool: (toolName, timeoutMs, args, claims) => new Promise((resolve, reject) => {
                 const callId = crypto.randomBytes(16).toString('hex');
                 const timer  = setTimeout(() => {

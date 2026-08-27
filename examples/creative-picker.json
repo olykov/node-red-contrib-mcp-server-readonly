@@ -1,0 +1,133 @@
+[
+  {
+    "id": "creative-picker-tab",
+    "type": "tab",
+    "label": "Creative picker MCP",
+    "disabled": false,
+    "info": "Render a small creative-variant picker. Select the existing MCP Server config node after import."
+  },
+  {
+    "id": "creative-picker-server",
+    "type": "mcp-server",
+    "name": "Creative picker",
+    "path": "creative-picker",
+    "serverUrl": "",
+    "filterHost": false,
+    "serverName": "Creative picker",
+    "instructions": "Use creative_picker to render a small set of creative variants. The tool remains useful without a UI because it returns structured options.",
+    "issuerUrl": "",
+    "redirectUris": "https://claude.ai/api/mcp/auth_callback",
+    "scopes": "openid profile email",
+    "audience": "",
+    "tokenCacheTTL": 300,
+    "requiredClaim": "groups",
+    "requiredValue": "",
+    "adminToolsEnabled": false,
+    "adminPort": 1880,
+    "adminRequiredValue": "admin"
+  },
+  {
+    "id": "creative-picker-in",
+    "type": "mcp-in",
+    "z": "creative-picker-tab",
+    "name": "Render creative picker",
+    "mcpServer": "creative-picker-server",
+    "toolName": "creative_picker",
+    "description": "Render a picker for three creative directions. Returns structured options even when the host cannot render MCP Apps UI.",
+    "inputSchema": "{\"type\":\"object\",\"properties\":{\"selectionMode\":{\"type\":\"string\",\"enum\":[\"single\",\"multiple\"],\"default\":\"single\"}}}",
+    "topic": "",
+    "timeout": 30,
+    "requiredValue": "",
+    "exposeClaims": false,
+    "x": 150,
+    "y": 100,
+    "wires": [
+      [
+        "creative-picker-function"
+      ]
+    ]
+  },
+  {
+    "id": "creative-picker-function",
+    "type": "function",
+    "z": "creative-picker-tab",
+    "name": "Build picker result",
+    "func": "const selectionMode = msg.payload?.selectionMode === 'multiple' ? 'multiple' : 'single';\nconst options = [\n  { id: 'option_a', label: 'A \u2014 Action-led', description: 'The person and moment of action are primary.' },\n  { id: 'option_b', label: 'B \u2014 Context-led', description: 'The environment and atmosphere are primary.' },\n  { id: 'option_c', label: 'C \u2014 Balanced', description: 'Equal emphasis on person, action, and environment.' }\n];\nmsg.mcpResult = {\n  content: [{ type: 'text', text: 'Choose one or more creative directions.' }],\n  structuredContent: { title: 'Choose creative variants', selectionMode, options, allowCustomFeedback: true },\n  _meta: { ui: { resourceUri: 'ui://creative-picker/variants.html' } }\n};\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 100,
+    "wires": [
+      [
+        "creative-picker-out"
+      ]
+    ]
+  },
+  {
+    "id": "creative-picker-out",
+    "type": "mcp-out",
+    "z": "creative-picker-tab",
+    "name": "",
+    "mcpServer": "creative-picker-server",
+    "emptyMessage": "No creative variants available.",
+    "x": 700,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "creative-picker-submit-in",
+    "type": "mcp-in",
+    "z": "creative-picker-tab",
+    "name": "Accept picker selection",
+    "mcpServer": "creative-picker-server",
+    "toolName": "creative_picker_submit",
+    "description": "Validate and return the user's creative-picker selection. Does not persist or publish anything.",
+    "inputSchema": "{\"type\":\"object\",\"required\":[\"selectedIds\"],\"properties\":{\"selectionMode\":{\"type\":\"string\",\"enum\":[\"single\",\"multiple\"]},\"selectedIds\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":1},\"feedback\":{\"type\":\"string\",\"maxLength\":2000}}}",
+    "topic": "",
+    "timeout": 30,
+    "requiredValue": "",
+    "exposeClaims": false,
+    "x": 150,
+    "y": 220,
+    "wires": [
+      [
+        "creative-picker-submit-function"
+      ]
+    ]
+  },
+  {
+    "id": "creative-picker-submit-function",
+    "type": "function",
+    "z": "creative-picker-tab",
+    "name": "Validate selection",
+    "func": "const allowed = new Set(['option_a', 'option_b', 'option_c']);\nconst input = msg.payload || {};\nconst selectedIds = Array.isArray(input.selectedIds) ? [...new Set(input.selectedIds.filter(id => typeof id === 'string'))] : [];\nconst selectionMode = input.selectionMode === 'multiple' ? 'multiple' : 'single';\nconst invalid = selectedIds.filter(id => !allowed.has(id));\nif (!selectedIds.length || invalid.length || (selectionMode === 'single' && selectedIds.length !== 1)) {\n  msg.mcpResult = { content: [{ type: 'text', text: 'Invalid creative-picker selection.' }], isError: true };\n  return msg;\n}\nconst feedback = typeof input.feedback === 'string' ? input.feedback.trim().slice(0, 2000) : '';\nmsg.mcpResult = {\n  content: [{ type: 'text', text: `Selected: ${selectedIds.join(', ')}.` }],\n  structuredContent: { selectedIds, selectionMode, feedback, message: 'Selection saved for the current conversation only.' }\n};\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 220,
+    "wires": [
+      [
+        "creative-picker-submit-out"
+      ]
+    ]
+  },
+  {
+    "id": "creative-picker-submit-out",
+    "type": "mcp-out",
+    "z": "creative-picker-tab",
+    "name": "",
+    "mcpServer": "creative-picker-server",
+    "emptyMessage": "No selection received.",
+    "x": 700,
+    "y": 220,
+    "wires": []
+  }
+]

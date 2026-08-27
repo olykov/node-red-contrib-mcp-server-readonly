@@ -139,7 +139,7 @@ including when the token has no scope claim at all.
 ### Protocol
 
 The endpoint speaks MCP protocol version `2024-11-05` over plain HTTP POST — every request is
-one JSON-RPC message, every response one JSON body. `initialize`, `tools/list`, `tools/call` and
+one JSON-RPC message, every response one JSON body. `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read` and
 `ping` are supported; there is no SSE/streaming `GET` channel and no server-initiated messages.
 This is the subset today's OAuth-capable MCP clients (e.g. Claude) actually use against a tools-only
 server. The advertised version is intentionally pinned rather than echoing the client's offer.
@@ -216,6 +216,18 @@ block (or combine with [hostname filtering](#hostname-filtering) above).
 > Tested with **Caddy** (reverse proxy) + **PocketID** (identity provider) + **Claude.ai** and
 > **Hermes** (MCP clients). Any spec-compliant OIDC provider issuing JWT access tokens, behind
 > any reverse proxy that forwards the routes above, should work the same way.
+
+## MCP Apps UI resources
+
+`mcp-out` normally turns `msg.payload` into text or MCP content blocks. For an MCP Apps response,
+set `msg.mcpResult` instead to a complete tool-result object. It passes through unchanged, so a
+render tool can return `content`, `structuredContent`, and `_meta.ui.resourceUri` together.
+
+This package serves the bundled `ui://creative-picker/variants.html` resource through
+`resources/read` with `text/html;profile=mcp-app`. It is a static iframe resource, not a public
+Node-RED page. The included picker is a reference: it receives structured results through the
+MCP Apps bridge and calls `creative_picker_submit` through `tools/call`; it does not persist data
+on its own. Keep every tool useful without its UI for hosts that do not render MCP Apps.
 
 ## Examples
 
