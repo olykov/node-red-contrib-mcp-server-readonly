@@ -217,44 +217,47 @@ block (or combine with [hostname filtering](#hostname-filtering) above).
 > **Hermes** (MCP clients). Any spec-compliant OIDC provider issuing JWT access tokens, behind
 > any reverse proxy that forwards the routes above, should work the same way.
 
-## Native interactive forms
+## Interactive MCP Apps picker
 
-The MCP endpoint uses sessionful **Streamable HTTP** (MCP 2025-06-18). This lets a Node-RED flow
-pause a `tools/call`, ask the host for input with MCP `elicitation/create`, and resume the same
-call after the user responds.
+The MCP endpoint uses **Streamable HTTP** and advertises the standard MCP Apps extension
+`io.modelcontextprotocol/ui`. Interactive picker tools return ordinary MCP tool results with
+structured data plus UI metadata; the host renders the linked `ui://` HTML resource inline when it
+supports MCP Apps.
 
-For Codex's native single-image picker, have the flow connected to `mcp-in` set:
+For a creative picker, the preferred Node-RED flow connected to `mcp-in` should set `msg.mcpResult`
+and send the same message to `mcp-out`:
 
 ```js
-msg.mcpElicitation = {
-  mode: 'openai/form',
-  message: 'Choose one creative variant.',
-  requestedSchema: {
-    type: 'object',
-    properties: {
-      creative: {
-        type: 'openai/imagePicker',
-        title: 'Creative variant',
-        items: [
-          { id: 'variant_a', title: 'Variant A', image: 'data:image/png;base64,...' }
-        ]
+msg.mcpResult = {
+  content: [{ type: 'text', text: 'Choose a creative variant in the picker.' }],
+  structuredContent: {
+    title: 'Choose creative variants',
+    selectionMode: 'single',
+    options: [
+      {
+        id: 'variant_a',
+        label: 'Variant A',
+        description: 'Short note for the user',
+        image: 'data:image/png;base64,...'
       }
-    },
-    required: ['creative']
+    ]
+  },
+  _meta: {
+    ui: { resourceUri: 'ui://creative-picker/variants.html' },
+    'ui/resourceUri': 'ui://creative-picker/variants.html'
   }
 };
 return msg;
 ```
 
-Send that message to `mcp-out`. The server verifies that the client negotiated the
-`openai/form` extension, then returns the eventual answer as the original tool's
-`structuredContent.selection` (for example, `{ creative: 'variant_a' }`). A client that does not
-advertise that extension receives an explicit tool error; the flow does not silently fall back to
-an HTML picker.
+The server also keeps a narrow compatibility adapter for older local flows that still send
+`msg.mcpElicitation` with `mode: 'openai/form'` and an `openai/imagePicker` field using `items`.
+That adapter does not call `openai/form`; it converts only that known picker shape into the same
+MCP Apps result above. New flows should use `msg.mcpResult` directly.
 
-`msg.mcpResult` remains available for ordinary non-interactive MCP tool results. The bundled
-MCP Apps HTML resource is retained only as a separate backwards-compatible resource API; the
-native picker example does not use it.
+The app-only helper tool `creative_picker_submit` validates a picker selection submitted from the
+HTML app and returns `structuredContent.type = 'creative_picker_selection'` with `selectedIds` and
+optional `feedback`.
 
 ## Examples
 

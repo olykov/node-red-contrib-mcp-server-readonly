@@ -3,10 +3,15 @@
 const assert = require('node:assert/strict');
 const { describe, it } = require('node:test');
 
+const { CREATIVE_PICKER_URI } = require('../lib/mcp-app-resources');
 const {
-    OPENAI_FORM_TIMEOUT_MS,
-    capabilitySummary,
-    hasOpenAIFormCapability,
+    MCP_APP_EXTENSION,
+    MCP_APP_MIME_TYPE,
+    LEGACY_UI_RESOURCE_URI_META,
+    creativePickerAppResult,
+    creativePickerOptionsFromOpenAIForm,
+    creativePickerSubmitResult,
+    hasMcpAppCapability,
     isOpenAIForm,
     resolveFlowResult
 } = require('../lib/mcp-streamable');
@@ -23,6 +28,7 @@ const picker = {
                 items : [{
                     id : 'creative_a',
                     title : 'Creative A',
+                    description : 'First direction',
                     image : 'data:image/png;base64,AA=='
                 }]
             }
@@ -31,79 +37,88 @@ const picker = {
     }
 };
 
-describe('lib/mcp-streamable native OpenAI form elicitation', () => {
-    it('detects the exact negotiated openai/form extension', () => {
-        assert.equal(hasOpenAIFormCapability({ server: { getClientCapabilities: () => ({
-            extensions : { 'openai/form': {} }
-        }) } }), true);
-        assert.equal(hasOpenAIFormCapability({ server: { getClientCapabilities: () => ({}) } }), false);
-        assert.deepEqual(capabilitySummary({ server: { getClientCapabilities: () => ({
-            elicitation : {},
-            extensions  : { 'openai/form': {}, other: {} }
-        }) } }), {
-            keys          : ['elicitation', 'extensions'],
-            extensionKeys : ['openai/form', 'other']
-        });
+function serverWithCapabilities(capabilities) {
+    return { server: { getClientCapabilities: () => capabilities } };
+}
+
+describe('lib/mcp-streamable MCP Apps creative picker', () => {
+    it('detects negotiated MCP Apps support from client capabilities', () => {
+        assert.equal(hasMcpAppCapability(serverWithCapabilities({
+            extensions : { [MCP_APP_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] } }
+        })), true);
+        assert.equal(hasMcpAppCapability(serverWithCapabilities({
+            extensions : { [MCP_APP_EXTENSION]: { mimeTypes: ['text/html'] } }
+        })), false);
+        assert.equal(hasMcpAppCapability(serverWithCapabilities({})), false);
     });
 
-    it('accepts only an OpenAI form-shaped flow payload', () => {
+    it('accepts only the legacy OpenAI form-shaped flow payload for compatibility conversion', () => {
         assert.equal(isOpenAIForm(picker), true);
         assert.equal(isOpenAIForm({ mode: 'form', message: 'x', requestedSchema: {} }), false);
         assert.equal(isOpenAIForm(null), false);
     });
 
-    it('sends openai/form and turns an accepted selection into the tool result', async () => {
-        const sent = [];
-        const ctx = { mcpReq: {
-            send: async (request, schema, options) => {
-                sent.push({ request, schema, options });
-                return { action: 'accept', content: { creative: 'creative_a' } };
-            }
-        } };
-        const mcpServer = { server: { getClientCapabilities: () => ({ extensions: { 'openai/form': {} } }) } };
+    it('converts an OpenAI imagePicker payload into an MCP Apps tool result', () => {
+        const result = creativePickerAppResult(picker, serverWithCapabilities({
+            extensions : { [MCP_APP_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] } }
+        }));
 
-        const result = await resolveFlowResult(ctx, mcpServer, { mcpElicitation: picker });
-
-        assert.deepEqual(sent[0].request, {
-            method : 'openai/form',
-            params : {
-                message         : picker.message,
-                requestedSchema : picker.requestedSchema
+        assert.deepEqual(result, {
+            content : [{ type: 'text', text: 'Choose a creative variant in the picker.' }],
+            structuredContent : {
+                title : 'Choose creative variants',
+                selectionMode : 'single',
+                options : [{
+                    id : 'creative_a',
+                    label : 'Creative A',
+                    description : 'First direction',
+                    image : 'data:image/png;base64,AA=='
+                }]
+            },
+            _meta : {
+                ui: { resourceUri: CREATIVE_PICKER_URI },
+                [LEGACY_UI_RESOURCE_URI_META]: CREATIVE_PICKER_URI
             }
-        });
-        assert.equal(sent[0].options.timeout, OPENAI_FORM_TIMEOUT_MS);
-        assert.deepEqual(result.structuredContent, {
-            action : 'accept',
-            selection : { creative: 'creative_a' }
         });
     });
 
-    it('fails with diagnostic keys when openai/form is not advertised', async () => {
-        const result = await resolveFlowResult(
-            { mcpReq: { send: async () => { throw new Error('must not request'); } } },
-            { server: { getClientCapabilities: () => ({
-                elicitation : {},
-                extensions  : { 'io.modelcontextprotocol/ui': {} }
-            }) } },
-            { mcpElicitation: picker }
-        );
-
-        assert.equal(result.isError, true);
-        assert.match(result.content[0].text, /OpenAI form elicitation is not advertised/);
-        assert.ok(result.content[0].text.includes('clientCapabilities keys: ["elicitation","extensions"]'));
-        assert.ok(result.content[0].text.includes('clientCapabilities.extensions keys: ["io.modelcontextprotocol/ui"]'));
+    it('keeps a useful text result when the client has not advertised MCP Apps', () => {
+        const result = creativePickerAppResult(picker, serverWithCapabilities({ extensions: {} }));
+        assert.equal(result.content[0].text, 'Choose a creative variant. MCP Apps UI is not advertised by this client connection.');
+        assert.equal(result._meta.ui.resourceUri, CREATIVE_PICKER_URI);
+        assert.equal(result.structuredContent.options[0].id, 'creative_a');
     });
 
-    it('returns the actual send error with sanitized capability keys', async () => {
-        const result = await resolveFlowResult(
-            { mcpReq: { send: async () => { throw new Error('boom'); } } },
-            { server: { getClientCapabilities: () => ({ extensions: { 'openai/form': {}, other: {} } }) } },
-            { mcpElicitation: picker }
-        );
+    it('extracts picker options only from openai/imagePicker items', () => {
+        assert.deepEqual(creativePickerOptionsFromOpenAIForm(picker), [{
+            id : 'creative_a',
+            label : 'Creative A',
+            description : 'First direction',
+            image : 'data:image/png;base64,AA=='
+        }]);
+        assert.deepEqual(creativePickerOptionsFromOpenAIForm({
+            mode: 'openai/form', message: 'x', requestedSchema: { type: 'object', properties: {} }
+        }), []);
+    });
 
-        assert.equal(result.isError, true);
-        assert.match(result.content[0].text, /OpenAI form elicitation failed: boom/);
-        assert.ok(result.content[0].text.includes('clientCapabilities keys: ["extensions"]'));
-        assert.ok(result.content[0].text.includes('clientCapabilities.extensions keys: ["openai/form","other"]'));
+    it('routes mcpElicitation through MCP Apps instead of sending openai/form', async () => {
+        const ctx = { mcpReq: { send: async () => { throw new Error('must not call openai/form'); } } };
+        const result = await resolveFlowResult(ctx, serverWithCapabilities({
+            extensions : { [MCP_APP_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] } }
+        }), { mcpElicitation: picker });
+
+        assert.equal(result._meta.ui.resourceUri, CREATIVE_PICKER_URI);
+        assert.equal(result.structuredContent.options[0].id, 'creative_a');
+    });
+
+    it('validates submit payloads from the MCP Apps picker', () => {
+        assert.deepEqual(creativePickerSubmitResult({
+            selectionMode: 'multiple', selectedIds: ['a', 'b'], feedback: 'Use a'
+        }).structuredContent, {
+            type: 'creative_picker_selection', selectionMode: 'multiple', selectedIds: ['a', 'b'], feedback: 'Use a'
+        });
+        const empty = creativePickerSubmitResult({ selectedIds: [] });
+        assert.equal(empty.isError, true);
+        assert.match(empty.content[0].text, /Select at least one/);
     });
 });
