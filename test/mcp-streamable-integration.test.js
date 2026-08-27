@@ -122,7 +122,7 @@ describe('Streamable HTTP native form round trip', () => {
                 const match = eventBuffer.match(/data: (\{[^\n]+\})/);
                 if (!match || elicitationReply) return;
                 const requestFromServer = JSON.parse(match[1]);
-                if (requestFromServer.method !== 'elicitation/create') return;
+                if (requestFromServer.method !== 'openai/form') return;
                 elicitationReply = request(fixture.port, {
                     jsonrpc: '2.0', id: requestFromServer.id,
                     result: { action: 'accept', content: { creative: 'a' } }

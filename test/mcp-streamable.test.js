@@ -52,7 +52,7 @@ describe('lib/mcp-streamable native OpenAI form elicitation', () => {
         assert.equal(isOpenAIForm(null), false);
     });
 
-    it('sends elicitation/create and turns an accepted selection into the tool result', async () => {
+    it('sends openai/form and turns an accepted selection into the tool result', async () => {
         const sent = [];
         const ctx = { mcpReq: {
             send: async (request, schema, options) => {
@@ -64,7 +64,13 @@ describe('lib/mcp-streamable native OpenAI form elicitation', () => {
 
         const result = await resolveFlowResult(ctx, mcpServer, { mcpElicitation: picker });
 
-        assert.deepEqual(sent[0].request, { method: 'elicitation/create', params: picker });
+        assert.deepEqual(sent[0].request, {
+            method : 'openai/form',
+            params : {
+                message         : picker.message,
+                requestedSchema : picker.requestedSchema
+            }
+        });
         assert.equal(sent[0].options.timeout, OPENAI_FORM_TIMEOUT_MS);
         assert.deepEqual(result.structuredContent, {
             action : 'accept',
@@ -72,34 +78,32 @@ describe('lib/mcp-streamable native OpenAI form elicitation', () => {
         });
     });
 
-    it('does not block before sending when openai/form is not advertised', async () => {
-        const sent = [];
+    it('fails with diagnostic keys when openai/form is not advertised', async () => {
         const result = await resolveFlowResult(
-            { mcpReq: { send: async request => {
-                sent.push(request);
-                return { action: 'accept', content: { creative: 'creative_a' } };
-            } } },
-            { server: { getClientCapabilities: () => ({ elicitation: {} }) } },
+            { mcpReq: { send: async () => { throw new Error('must not request'); } } },
+            { server: { getClientCapabilities: () => ({
+                elicitation : {},
+                extensions  : { 'io.modelcontextprotocol/ui': {} }
+            }) } },
             { mcpElicitation: picker }
         );
 
-        assert.deepEqual(sent, [{ method: 'elicitation/create', params: picker }]);
-        assert.deepEqual(result.structuredContent, {
-            action : 'accept',
-            selection : { creative: 'creative_a' }
-        });
+        assert.equal(result.isError, true);
+        assert.match(result.content[0].text, /OpenAI form elicitation is not advertised/);
+        assert.ok(result.content[0].text.includes('clientCapabilities keys: ["elicitation","extensions"]'));
+        assert.ok(result.content[0].text.includes('clientCapabilities.extensions keys: ["io.modelcontextprotocol/ui"]'));
     });
 
     it('returns the actual send error with sanitized capability keys', async () => {
         const result = await resolveFlowResult(
             { mcpReq: { send: async () => { throw new Error('boom'); } } },
-            { server: { getClientCapabilities: () => ({ elicitation: {}, extensions: { other: {} } }) } },
+            { server: { getClientCapabilities: () => ({ extensions: { 'openai/form': {}, other: {} } }) } },
             { mcpElicitation: picker }
         );
 
         assert.equal(result.isError, true);
         assert.match(result.content[0].text, /OpenAI form elicitation failed: boom/);
-        assert.ok(result.content[0].text.includes('clientCapabilities keys: ["elicitation","extensions"]'));
-        assert.ok(result.content[0].text.includes('clientCapabilities.extensions keys: ["other"]'));
+        assert.ok(result.content[0].text.includes('clientCapabilities keys: ["extensions"]'));
+        assert.ok(result.content[0].text.includes('clientCapabilities.extensions keys: ["openai/form","other"]'));
     });
 });
