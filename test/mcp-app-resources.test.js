@@ -62,7 +62,9 @@ describe('creative-picker MCP App resource', function () {
             }
         });
 
-        listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 1, result: {} } });
+        listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 1, result: {
+            hostCapabilities: { updateModelContext: { structuredContent: {} }, message: { text: {} } }
+        } } });
         await new Promise(resolve => setImmediate(resolve));
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[1])), { jsonrpc: '2.0', method: 'ui/notifications/initialized' });
 
@@ -83,5 +85,35 @@ describe('creative-picker MCP App resource', function () {
         controls[0].checked = true;
         controls[0].listeners.change();
         assert.strictEqual(elements.submit.disabled, false);
+
+        elements.submit.listeners.click();
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[2])), {
+            jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+                name: 'creative_picker_submit',
+                arguments: { selectionMode: 'multiple', selectedIds: ['option_a'], feedback: '' }
+            }
+        });
+        listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 2, result: {
+            structuredContent: { message: 'Selection validated.' }
+        } } });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[3])), {
+            jsonrpc: '2.0', id: 3, method: 'ui/update-model-context', params: {
+                content: [{ type: 'text', text: 'Creative picker selection: option_a. Continue the creative pipeline using this selection.' }],
+                structuredContent: {
+                    type: 'creative_picker_selection', selectionMode: 'multiple', selectedIds: ['option_a'], feedback: ''
+                }
+            }
+        });
+        listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 3, result: {} } });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[4])), {
+            jsonrpc: '2.0', id: 4, method: 'ui/message', params: {
+                role: 'user', content: [{ type: 'text', text: 'Creative picker selection: option_a. Continue the creative pipeline using this selection.' }]
+            }
+        });
+        listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 4, result: {} } });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.strictEqual(elements.status.textContent, 'Selection sent to the conversation.');
     });
 });
