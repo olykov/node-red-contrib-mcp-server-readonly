@@ -151,10 +151,10 @@ describe('Streamable HTTP MCP Apps picker', () => {
 
             const submitResult = messageById((await request(fixture.port, {
                 jsonrpc: '2.0', id: 5, method: 'tools/call',
-                params: { name: 'picker_submit', arguments: { selectedIds: ['a'], feedback: 'ok' } }
+                params: { name: 'picker_submit', arguments: { selectedIds: ['a'], otherOption: 'ok' } }
             }, sessionId)).data, 5).result;
             assert.deepEqual(submitResult.structuredContent, {
-                type: 'picker_selection', selectionMode: 'single', selectedIds: ['a'], feedback: 'ok'
+                type: 'picker_selection', selectionMode: 'single', selectedIds: ['a'], otherOption: 'ok'
             });
         } finally {
             await fixture.close();

@@ -7,7 +7,7 @@ const { PICKER_URI, MCP_APP_RESOURCES } = require('../lib/mcp-app-resources');
 describe('picker MCP App resource', function () {
     it('declares the standard MIME type and resource URI', function () {
         const resource = MCP_APP_RESOURCES[PICKER_URI];
-        assert.strictEqual(resource.uri, 'ui://picker/v3/options.html');
+        assert.strictEqual(resource.uri, 'ui://picker/v4/options.html');
         assert.strictEqual(resource.mimeType, 'text/html;profile=mcp-app');
     });
 
@@ -32,17 +32,25 @@ describe('picker MCP App resource', function () {
         const sent = [];
         const listeners = {};
         const controls = [];
-        const makeElement = () => ({
-            children: [], disabled: false, listeners: {}, textContent: '', value: '', className: '',
-            append(...children) { this.children.push(...children); },
-            replaceChildren(...children) { this.children = children; },
-            addEventListener(name, handler) { this.listeners[name] = handler; }
-        });
-        const elements = Object.fromEntries(['options', 'submit', 'status', 'title', 'intro', 'feedback']
+        const makeElement = () => {
+            const classes = new Set();
+            return {
+                children: [], disabled: false, listeners: {}, textContent: '', value: '', className: '',
+                classList: {
+                    toggle(name, force) { force ? classes.add(name) : classes.delete(name); },
+                    contains(name) { return classes.has(name); }
+                },
+                append(...children) { this.children.push(...children); },
+                replaceChildren(...children) { this.children = children; },
+                addEventListener(name, handler) { this.listeners[name] = handler; }
+            };
+        };
+        const elements = Object.fromEntries(['options', 'submit', 'status', 'title', 'intro', 'other-option']
             .map(id => [id, makeElement()]));
         const parent = { postMessage(message) { sent.push(message); } };
         const window = {
             parent,
+            innerWidth: 900,
             addEventListener(name, handler) { listeners[name] = handler; }
         };
         const document = {
@@ -90,14 +98,14 @@ describe('picker MCP App resource', function () {
         controls[0].checked = true;
         controls[0].listeners.change();
         assert.strictEqual(elements.submit.disabled, false);
-        elements.feedback.value = 'Use this option, but make it calmer.';
-        elements.feedback.listeners.input();
+        elements['other-option'].value = 'Use option A, but make it calmer.';
+        elements['other-option'].listeners.input();
 
         elements.submit.listeners.click();
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[2])), {
             jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
                 name: 'picker_submit',
-                arguments: { selectionMode: 'multiple', selectedIds: ['option_a'], feedback: 'Use this option, but make it calmer.' }
+                arguments: { selectionMode: 'multiple', selectedIds: ['option_a'], otherOption: 'Use option A, but make it calmer.' }
             }
         });
         listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 2, result: {
@@ -106,9 +114,9 @@ describe('picker MCP App resource', function () {
         await new Promise(resolve => setImmediate(resolve));
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[3])), {
             jsonrpc: '2.0', id: 3, method: 'ui/update-model-context', params: {
-                content: [{ type: 'text', text: 'Picker selection: option_a. Feedback: Use this option, but make it calmer. Continue using this selection.' }],
+                content: [{ type: 'text', text: 'Picker selection: option_a. Other option: Use option A, but make it calmer. Continue using this selection.' }],
                 structuredContent: {
-                    type: 'picker_selection', selectionMode: 'multiple', selectedIds: ['option_a'], feedback: 'Use this option, but make it calmer.'
+                    type: 'picker_selection', selectionMode: 'multiple', selectedIds: ['option_a'], otherOption: 'Use option A, but make it calmer.'
                 }
             }
         });
@@ -116,11 +124,124 @@ describe('picker MCP App resource', function () {
         await new Promise(resolve => setImmediate(resolve));
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[4])), {
             jsonrpc: '2.0', id: 4, method: 'ui/message', params: {
-                role: 'user', content: [{ type: 'text', text: 'Picker selection: option_a. Feedback: Use this option, but make it calmer. Continue using this selection.' }]
+                role: 'user', content: [{ type: 'text', text: 'Picker selection: option_a. Other option: Use option A, but make it calmer. Continue using this selection.' }]
             }
         });
         listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 4, result: {} } });
         await new Promise(resolve => setImmediate(resolve));
         assert.strictEqual(elements.status.textContent, 'Selection sent.');
     });
+
+    it('uses two columns for short medium-sized option sets and one column for long text', async function () {
+        const html = MCP_APP_RESOURCES[PICKER_URI].text;
+        const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+        const sent = [];
+        const listeners = {};
+        const controls = [];
+        const makeElement = () => {
+            const classes = new Set();
+            return {
+                children: [], disabled: false, listeners: {}, textContent: '', value: '', className: '',
+                classList: {
+                    toggle(name, force) { force ? classes.add(name) : classes.delete(name); },
+                    contains(name) { return classes.has(name); }
+                },
+                append(...children) { this.children.push(...children); },
+                replaceChildren(...children) { this.children = children; },
+                addEventListener(name, handler) { this.listeners[name] = handler; }
+            };
+        };
+        const elements = Object.fromEntries(['options', 'submit', 'status', 'title', 'intro', 'other-option']
+            .map(id => [id, makeElement()]));
+        const parent = { postMessage(message) { sent.push(message); } };
+        const window = { parent, innerWidth: 900, addEventListener(name, handler) { listeners[name] = handler; } };
+        const document = {
+            getElementById(id) { return elements[id]; },
+            querySelectorAll(selector) {
+                return selector === 'input[name=picker-option]:checked' ? controls.filter(control => control.checked) : [];
+            },
+            createElement(tag) {
+                const element = makeElement();
+                if (tag === 'input') controls.push(element);
+                return element;
+            }
+        };
+
+        vm.runInNewContext(script, { window, document, Map, Promise, console });
+        listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 1, result: {
+            hostCapabilities: { updateModelContext: { structuredContent: {} }, message: { text: {} } }
+        } } });
+        await new Promise(resolve => setImmediate(resolve));
+
+        listeners.message({ source: parent, data: {
+            jsonrpc: '2.0', method: 'ui/notifications/tool-result',
+            params: { structuredContent: { options: Array.from({ length: 9 }, (_, index) => ({
+                id: `short_${index + 1}`, label: `Option ${index + 1}`, description: `Item ${index + 1}`
+            })) } }
+        } });
+        assert.strictEqual(elements.options.classList.contains('two-columns'), true);
+
+        listeners.message({ source: parent, data: {
+            jsonrpc: '2.0', method: 'ui/notifications/tool-result',
+            params: { structuredContent: { options: Array.from({ length: 9 }, (_, index) => ({
+                id: `long_${index + 1}`,
+                label: `Option ${index + 1} with a deliberately long label`,
+                description: 'This description is long enough to require a full-width row instead of a compact two-column grid.'
+            })) } }
+        } });
+        assert.strictEqual(elements.options.classList.contains('two-columns'), false);
+    });
+
+    it('allows submitting only an other option without selecting a radio option', async function () {
+        const html = MCP_APP_RESOURCES[PICKER_URI].text;
+        const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+        const sent = [];
+        const listeners = {};
+        const controls = [];
+        const makeElement = () => ({
+            children: [], disabled: false, listeners: {}, textContent: '', value: '', className: '',
+            classList: { toggle() {}, contains() { return false; } },
+            append(...children) { this.children.push(...children); },
+            replaceChildren(...children) { this.children = children; },
+            addEventListener(name, handler) { this.listeners[name] = handler; }
+        });
+        const elements = Object.fromEntries(['options', 'submit', 'status', 'title', 'intro', 'other-option']
+            .map(id => [id, makeElement()]));
+        const parent = { postMessage(message) { sent.push(message); } };
+        const window = { parent, innerWidth: 900, addEventListener(name, handler) { listeners[name] = handler; } };
+        const document = {
+            getElementById(id) { return elements[id]; },
+            querySelectorAll(selector) {
+                return selector === 'input[name=picker-option]:checked' ? controls.filter(control => control.checked) : [];
+            },
+            createElement(tag) {
+                const element = makeElement();
+                if (tag === 'input') controls.push(element);
+                return element;
+            }
+        };
+
+        vm.runInNewContext(script, { window, document, Map, Promise, console });
+        listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 1, result: {
+            hostCapabilities: { updateModelContext: { structuredContent: {} }, message: { text: {} } }
+        } } });
+        await new Promise(resolve => setImmediate(resolve));
+        listeners.message({ source: parent, data: {
+            jsonrpc: '2.0', method: 'ui/notifications/tool-result',
+            params: { structuredContent: { selectionMode: 'single', options: [{ id: 'a', label: 'A' }] } }
+        } });
+
+        assert.strictEqual(elements.submit.disabled, true);
+        elements['other-option'].value = 'Create a different third direction.';
+        elements['other-option'].listeners.input();
+        assert.strictEqual(elements.submit.disabled, false);
+        elements.submit.listeners.click();
+        assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[2])), {
+            jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+                name: 'picker_submit',
+                arguments: { selectionMode: 'single', selectedIds: [], otherOption: 'Create a different third direction.' }
+            }
+        });
+    });
+
 });

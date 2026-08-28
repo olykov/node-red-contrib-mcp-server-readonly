@@ -114,12 +114,12 @@ describe('lib/mcp-streamable MCP Apps picker', () => {
 
     it('validates submit payloads from the MCP Apps picker', () => {
         assert.deepEqual(pickerSubmitResult({
-            selectionMode: 'multiple', selectedIds: ['a', 'b'], feedback: 'Use a'
+            selectionMode: 'multiple', selectedIds: ['a', 'b'], otherOption: 'Use a'
         }).structuredContent, {
-            type: 'picker_selection', selectionMode: 'multiple', selectedIds: ['a', 'b'], feedback: 'Use a'
+            type: 'picker_selection', selectionMode: 'multiple', selectedIds: ['a', 'b'], otherOption: 'Use a'
         });
         const empty = pickerSubmitResult({ selectedIds: [] });
         assert.equal(empty.isError, true);
-        assert.match(empty.content[0].text, /Select at least one/);
+        assert.match(empty.content[0].text, /Select an option or enter other option/);
     });
 });
