@@ -294,9 +294,9 @@ module.exports = function (RED) {
 
         // ── MCP JSON-RPC endpoint ───────────────────────────────────────────────
         // Stateful Streamable HTTP replaces the former one-request/one-JSON dispatcher.
-        // A native Codex image picker is a server-to-client elicitation request, so its
-        // response travels on the in-flight tools/call SSE stream and returns to the
-        // same Node-RED call after the user clicks Continue.
+        // MCP Apps picker results travel on the in-flight tools/call SSE stream;
+        // the app submits through an app-only helper tool and sends the selection
+        // back into the host conversation.
         const streamableDeps = {
             serverName,
             serverVersion : pkgVersion,
