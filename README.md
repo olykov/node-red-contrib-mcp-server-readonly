@@ -243,8 +243,8 @@ msg.mcpResult = {
     ]
   },
   _meta: {
-    ui: { resourceUri: 'ui://picker/options.html' },
-    'ui/resourceUri': 'ui://picker/options.html'
+    ui: { resourceUri: 'ui://picker/v2/options.html' },
+    'ui/resourceUri': 'ui://picker/v2/options.html'
   }
 };
 return msg;

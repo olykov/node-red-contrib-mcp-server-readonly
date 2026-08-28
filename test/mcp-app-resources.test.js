@@ -7,7 +7,7 @@ const { PICKER_URI, MCP_APP_RESOURCES } = require('../lib/mcp-app-resources');
 describe('picker MCP App resource', function () {
     it('declares the standard MIME type and resource URI', function () {
         const resource = MCP_APP_RESOURCES[PICKER_URI];
-        assert.strictEqual(resource.uri, 'ui://picker/options.html');
+        assert.strictEqual(resource.uri, 'ui://picker/v2/options.html');
         assert.strictEqual(resource.mimeType, 'text/html;profile=mcp-app');
     });
 

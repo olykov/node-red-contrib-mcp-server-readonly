@@ -177,7 +177,7 @@ describe('lib/mcp-rpc tools/call', function () {
 
 
 describe('lib/mcp-rpc MCP Apps resources', function () {
-    const resourceUri = 'ui://picker/options.html';
+    const resourceUri = 'ui://picker/v2/options.html';
     const resources = {
         [resourceUri]: {
             uri: resourceUri,
