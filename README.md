@@ -243,8 +243,8 @@ msg.mcpResult = {
     ]
   },
   _meta: {
-    ui: { resourceUri: 'ui://picker/v3/options.html' },
-    'ui/resourceUri': 'ui://picker/v3/options.html'
+    ui: { resourceUri: 'ui://picker/v4/options.html' },
+    'ui/resourceUri': 'ui://picker/v4/options.html'
   }
 };
 return msg;
@@ -252,7 +252,7 @@ return msg;
 
 The app-only helper tool `picker_submit` validates a picker selection submitted from the HTML app
 and returns `structuredContent.type = 'picker_selection'` with `selectedIds` and optional
-`feedback`.
+`otherOption`. `selectedIds` may be an empty array when the user enters only an other option.
 
 Legacy `msg.mcpElicitation`, `openai/form`, and `openai/imagePicker` compatibility is not supported.
 Flows must return the MCP Apps `msg.mcpResult` shape above.
