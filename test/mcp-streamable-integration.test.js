@@ -125,7 +125,9 @@ describe('Streamable HTTP MCP Apps picker', () => {
             }, sessionId)).data, 2).result.tools;
             const pickerTool = tools.find(tool => tool.name === 'picker');
             assert.ok(pickerTool);
-            assert.equal(pickerTool._meta, undefined);
+            assert.equal(pickerTool._meta.ui.resourceUri, PICKER_URI);
+            assert.equal(pickerTool._meta[LEGACY_UI_RESOURCE_URI_META], PICKER_URI);
+            assert.equal(pickerTool._meta['openai/outputTemplate'], PICKER_URI);
             const submitTool = tools.find(tool => tool.name === 'picker_submit');
             assert.deepEqual(submitTool._meta.ui.visibility, ['app']);
 
