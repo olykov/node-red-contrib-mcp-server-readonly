@@ -2,17 +2,22 @@
 
 const assert = require('node:assert');
 const vm = require('node:vm');
-const { CREATIVE_PICKER_URI, MCP_APP_RESOURCES } = require('../lib/mcp-app-resources');
+const { PICKER_URI, MCP_APP_RESOURCES } = require('../lib/mcp-app-resources');
 
-describe('creative-picker MCP App resource', function () {
+describe('picker MCP App resource', function () {
     it('declares the standard MIME type and resource URI', function () {
-        const resource = MCP_APP_RESOURCES[CREATIVE_PICKER_URI];
-        assert.strictEqual(resource.uri, 'ui://creative-picker/variants.html');
+        const resource = MCP_APP_RESOURCES[PICKER_URI];
+        assert.strictEqual(resource.uri, 'ui://picker/options.html');
         assert.strictEqual(resource.mimeType, 'text/html;profile=mcp-app');
     });
 
+    it('is a text-only UI with no image rendering path', function () {
+        const html = MCP_APP_RESOURCES[PICKER_URI].text;
+        assert.doesNotMatch(html, /<img|createElement\('img'\)|\.src\s*=|imagePicker|data:image/i);
+    });
+
     it('completes the MCP Apps lifecycle before consuming tool results', function () {
-        const html = MCP_APP_RESOURCES[CREATIVE_PICKER_URI].text;
+        const html = MCP_APP_RESOURCES[PICKER_URI].text;
         assert.match(html, /request\('ui\/initialize'/);
         assert.match(html, /protocolVersion:'2026-01-26'/);
         assert.match(html, /appCapabilities:\{availableDisplayModes:\['inline'\]\}/);
@@ -22,13 +27,13 @@ describe('creative-picker MCP App resource', function () {
     });
 
     it('initializes, renders a multiple-choice result, and enables submission after selection', async function () {
-        const html = MCP_APP_RESOURCES[CREATIVE_PICKER_URI].text;
+        const html = MCP_APP_RESOURCES[PICKER_URI].text;
         const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
         const sent = [];
         const listeners = {};
         const controls = [];
         const makeElement = () => ({
-            children: [], disabled: false, listeners: {}, textContent: '', value: '',
+            children: [], disabled: false, listeners: {}, textContent: '', value: '', className: '',
             append(...children) { this.children.push(...children); },
             replaceChildren(...children) { this.children = children; },
             addEventListener(name, handler) { this.listeners[name] = handler; }
@@ -43,7 +48,7 @@ describe('creative-picker MCP App resource', function () {
         const document = {
             getElementById(id) { return elements[id]; },
             querySelectorAll(selector) {
-                return selector === 'input[name=variant]:checked' ? controls.filter(control => control.checked) : [];
+                return selector === 'input[name=picker-option]:checked' ? controls.filter(control => control.checked) : [];
             },
             createElement(tag) {
                 const element = makeElement();
@@ -57,7 +62,7 @@ describe('creative-picker MCP App resource', function () {
             jsonrpc: '2.0', id: 1, method: 'ui/initialize',
             params: {
                 protocolVersion: '2026-01-26',
-                appInfo: { name: 'Creative picker', version: '1.0.0' },
+                appInfo: { name: 'Picker', version: '1.0.0' },
                 appCapabilities: { availableDisplayModes: ['inline'] }
             }
         });
@@ -75,7 +80,7 @@ describe('creative-picker MCP App resource', function () {
         listeners.message({ source: parent, data: {
             jsonrpc: '2.0', method: 'ui/notifications/tool-result',
             params: { structuredContent: { selectionMode: 'multiple', options: [
-                { id: 'option_a', label: 'A' }, { id: 'option_b', label: 'B' }
+                { id: 'option_a', label: 'A', image: 'ignored' }, { id: 'option_b', label: 'B' }
             ] } }
         } });
 
@@ -89,7 +94,7 @@ describe('creative-picker MCP App resource', function () {
         elements.submit.listeners.click();
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[2])), {
             jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
-                name: 'creative_picker_submit',
+                name: 'picker_submit',
                 arguments: { selectionMode: 'multiple', selectedIds: ['option_a'], feedback: '' }
             }
         });
@@ -99,9 +104,9 @@ describe('creative-picker MCP App resource', function () {
         await new Promise(resolve => setImmediate(resolve));
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[3])), {
             jsonrpc: '2.0', id: 3, method: 'ui/update-model-context', params: {
-                content: [{ type: 'text', text: 'Creative picker selection: option_a. Continue the creative pipeline using this selection.' }],
+                content: [{ type: 'text', text: 'Picker selection: option_a. Continue using this selection.' }],
                 structuredContent: {
-                    type: 'creative_picker_selection', selectionMode: 'multiple', selectedIds: ['option_a'], feedback: ''
+                    type: 'picker_selection', selectionMode: 'multiple', selectedIds: ['option_a'], feedback: ''
                 }
             }
         });
@@ -109,11 +114,11 @@ describe('creative-picker MCP App resource', function () {
         await new Promise(resolve => setImmediate(resolve));
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[4])), {
             jsonrpc: '2.0', id: 4, method: 'ui/message', params: {
-                role: 'user', content: [{ type: 'text', text: 'Creative picker selection: option_a. Continue the creative pipeline using this selection.' }]
+                role: 'user', content: [{ type: 'text', text: 'Picker selection: option_a. Continue using this selection.' }]
             }
         });
         listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 4, result: {} } });
         await new Promise(resolve => setImmediate(resolve));
-        assert.strictEqual(elements.status.textContent, 'Selection sent to the conversation.');
+        assert.strictEqual(elements.status.textContent, 'Selection sent.');
     });
 });

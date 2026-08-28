@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { describe, it } = require('node:test');
-const { CREATIVE_PICKER_URI } = require('../lib/mcp-app-resources');
+const { PICKER_URI } = require('../lib/mcp-app-resources');
 const { MCP_APP_EXTENSION, MCP_APP_MIME_TYPE, LEGACY_UI_RESOURCE_URI_META, createStreamableMcpServer } = require('../lib/mcp-streamable');
 
 function request(port, body, sessionId) {
@@ -45,15 +45,15 @@ function messageById(text, id) {
 
 function startStreamableServer() {
     const tool = {
-        description: 'Choose one creative image.',
+        description: 'Choose one option.',
         schema: { type: 'object', properties: {} },
         timeoutMs: 1000,
         requiredValue: ''
     };
     const resources = {
-        [CREATIVE_PICKER_URI]: {
-            uri: CREATIVE_PICKER_URI,
-            name: 'Creative variant picker',
+        [PICKER_URI]: {
+            uri: PICKER_URI,
+            name: 'Picker',
             description: 'Interactive picker',
             mimeType: MCP_APP_MIME_TYPE,
             text: '<html>picker</html>',
@@ -63,23 +63,18 @@ function startStreamableServer() {
     const streamable = createStreamableMcpServer({
         serverName: 'test', serverVersion: '0.0.0',
         adminToolsEnabled: false, adminRequiredValue: '', adminTools: { TOOLS: [], TOOL_NAMES: new Set() },
-        tools: { creative_picker: tool }, resources, warn: () => {},
+        tools: { picker: tool }, resources, warn: () => {},
         allows: () => true,
         callTool: async () => ({
-            mcpElicitation: {
-                mode: 'openai/form',
-                message: 'Choose one.',
-                requestedSchema: {
-                    type: 'object',
-                    properties: {
-                        creative: {
-                            type: 'openai/imagePicker',
-                            title: 'Creative',
-                            items: [{ id: 'a', title: 'A', description: 'First', image: 'data:image/png;base64,AA==' }]
-                        }
-                    },
-                    required: ['creative']
-                }
+            content: [{ type: 'text', text: 'Choose one option in the picker.' }],
+            structuredContent: {
+                title: 'Choose an option',
+                selectionMode: 'single',
+                options: [{ id: 'a', label: 'A', description: 'First', image: 'must-be-dropped' }]
+            },
+            _meta: {
+                ui: { resourceUri: PICKER_URI },
+                [LEGACY_UI_RESOURCE_URI_META]: PICKER_URI
             }
         })
     });
@@ -100,8 +95,8 @@ function startStreamableServer() {
     })));
 }
 
-describe('Streamable HTTP MCP Apps creative picker', () => {
-    it('advertises the app resource, links creative_picker to it, and returns picker data', async () => {
+describe('Streamable HTTP MCP Apps picker', () => {
+    it('advertises the app resource, returns text-only picker data, and accepts submit', async () => {
         const fixture = await startStreamableServer();
         try {
             const initialize = await request(fixture.port, {
@@ -128,35 +123,36 @@ describe('Streamable HTTP MCP Apps creative picker', () => {
             const tools = messageById((await request(fixture.port, {
                 jsonrpc: '2.0', id: 2, method: 'tools/list', params: {}
             }, sessionId)).data, 2).result.tools;
-            const pickerTool = tools.find(tool => tool.name === 'creative_picker');
-            assert.equal(pickerTool._meta.ui.resourceUri, CREATIVE_PICKER_URI);
-            assert.equal(pickerTool._meta[LEGACY_UI_RESOURCE_URI_META], CREATIVE_PICKER_URI);
-            const submitTool = tools.find(tool => tool.name === 'creative_picker_submit');
+            const pickerTool = tools.find(tool => tool.name === 'picker');
+            assert.ok(pickerTool);
+            assert.equal(pickerTool._meta, undefined);
+            const submitTool = tools.find(tool => tool.name === 'picker_submit');
             assert.deepEqual(submitTool._meta.ui.visibility, ['app']);
 
             const resource = messageById((await request(fixture.port, {
-                jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: CREATIVE_PICKER_URI }
+                jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: PICKER_URI }
             }, sessionId)).data, 3).result.contents[0];
-            assert.equal(resource.uri, CREATIVE_PICKER_URI);
+            assert.equal(resource.uri, PICKER_URI);
             assert.equal(resource.mimeType, MCP_APP_MIME_TYPE);
             assert.equal(resource.text, '<html>picker</html>');
 
             const pickerResult = messageById((await request(fixture.port, {
                 jsonrpc: '2.0', id: 4, method: 'tools/call',
-                params: { name: 'creative_picker', arguments: {} }
+                params: { name: 'picker', arguments: {} }
             }, sessionId)).data, 4).result;
-            assert.equal(pickerResult._meta.ui.resourceUri, CREATIVE_PICKER_URI);
-            assert.equal(pickerResult._meta[LEGACY_UI_RESOURCE_URI_META], CREATIVE_PICKER_URI);
+            assert.equal(pickerResult._meta.ui.resourceUri, PICKER_URI);
+            assert.equal(pickerResult._meta[LEGACY_UI_RESOURCE_URI_META], PICKER_URI);
             assert.deepEqual(pickerResult.structuredContent.options, [{
-                id: 'a', label: 'A', description: 'First', image: 'data:image/png;base64,AA=='
+                id: 'a', label: 'A', description: 'First'
             }]);
+            assert.equal(JSON.stringify(pickerResult).includes('must-be-dropped'), false);
 
             const submitResult = messageById((await request(fixture.port, {
                 jsonrpc: '2.0', id: 5, method: 'tools/call',
-                params: { name: 'creative_picker_submit', arguments: { selectedIds: ['a'], feedback: 'ok' } }
+                params: { name: 'picker_submit', arguments: { selectedIds: ['a'], feedback: 'ok' } }
             }, sessionId)).data, 5).result;
             assert.deepEqual(submitResult.structuredContent, {
-                type: 'creative_picker_selection', selectionMode: 'single', selectedIds: ['a'], feedback: 'ok'
+                type: 'picker_selection', selectionMode: 'single', selectedIds: ['a'], feedback: 'ok'
             });
         } finally {
             await fixture.close();

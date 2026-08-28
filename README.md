@@ -220,44 +220,42 @@ block (or combine with [hostname filtering](#hostname-filtering) above).
 ## Interactive MCP Apps picker
 
 The MCP endpoint uses **Streamable HTTP** and advertises the standard MCP Apps extension
-`io.modelcontextprotocol/ui`. Interactive picker tools return ordinary MCP tool results with
-structured data plus UI metadata; the host renders the linked `ui://` HTML resource inline when it
-supports MCP Apps.
+`io.modelcontextprotocol/ui`. A Node-RED flow can return a generic inline picker by sending
+`msg.mcpResult` to `mcp-out` with `structuredContent.options` and the picker UI resource metadata.
 
-For a creative picker, the preferred Node-RED flow connected to `mcp-in` should set `msg.mcpResult`
-and send the same message to `mcp-out`:
+The picker is intentionally **text-only**. It does not render, accept, proxy, persist, or pass image
+fields. If a flow accidentally includes `image`, `images`, `src`, or other visual fields inside
+options, the server-side sanitizer drops them before the result reaches the app.
 
 ```js
 msg.mcpResult = {
-  content: [{ type: 'text', text: 'Choose a creative variant in the picker.' }],
+  content: [{ type: 'text', text: 'Choose an option in the picker.' }],
   structuredContent: {
-    title: 'Choose creative variants',
-    selectionMode: 'single',
+    title: 'Choose an option',
+    description: 'Select the direction to continue with.',
+    selectionMode: 'single', // or 'multiple'
     options: [
       {
-        id: 'variant_a',
-        label: 'Variant A',
-        description: 'Short note for the user',
-        image: 'data:image/png;base64,...'
+        id: 'option_a',
+        label: 'Option A',
+        description: 'Short note for the user'
       }
     ]
   },
   _meta: {
-    ui: { resourceUri: 'ui://creative-picker/variants.html' },
-    'ui/resourceUri': 'ui://creative-picker/variants.html'
+    ui: { resourceUri: 'ui://picker/options.html' },
+    'ui/resourceUri': 'ui://picker/options.html'
   }
 };
 return msg;
 ```
 
-The server also keeps a narrow compatibility adapter for older local flows that still send
-`msg.mcpElicitation` with `mode: 'openai/form'` and an `openai/imagePicker` field using `items`.
-That adapter does not call `openai/form`; it converts only that known picker shape into the same
-MCP Apps result above. New flows should use `msg.mcpResult` directly.
+The app-only helper tool `picker_submit` validates a picker selection submitted from the HTML app
+and returns `structuredContent.type = 'picker_selection'` with `selectedIds` and optional
+`feedback`.
 
-The app-only helper tool `creative_picker_submit` validates a picker selection submitted from the
-HTML app and returns `structuredContent.type = 'creative_picker_selection'` with `selectedIds` and
-optional `feedback`.
+Legacy `msg.mcpElicitation`, `openai/form`, and `openai/imagePicker` compatibility is not supported.
+Flows must return the MCP Apps `msg.mcpResult` shape above.
 
 ## Examples
 

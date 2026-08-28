@@ -177,11 +177,11 @@ describe('lib/mcp-rpc tools/call', function () {
 
 
 describe('lib/mcp-rpc MCP Apps resources', function () {
-    const resourceUri = 'ui://creative-picker/variants.html';
+    const resourceUri = 'ui://picker/options.html';
     const resources = {
         [resourceUri]: {
             uri: resourceUri,
-            name: 'Creative variant picker',
+            name: 'Picker',
             description: 'Picker',
             mimeType: 'text/html;profile=mcp-app',
             text: '<main>picker</main>',
@@ -195,7 +195,7 @@ describe('lib/mcp-rpc MCP Apps resources', function () {
         const listed = await handleRpc({ id: 2, method: 'resources/list' }, claims([]), deps({ resources }));
         assert.deepStrictEqual(listed.body.result.resources, [{
             uri: resourceUri,
-            name: 'Creative variant picker',
+            name: 'Picker',
             description: 'Picker',
             mimeType: 'text/html;profile=mcp-app'
         }]);
