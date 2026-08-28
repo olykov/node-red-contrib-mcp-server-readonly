@@ -7,7 +7,7 @@ const { PICKER_URI, MCP_APP_RESOURCES } = require('../lib/mcp-app-resources');
 describe('picker MCP App resource', function () {
     it('declares the standard MIME type and resource URI', function () {
         const resource = MCP_APP_RESOURCES[PICKER_URI];
-        assert.strictEqual(resource.uri, 'ui://picker/v2/options.html');
+        assert.strictEqual(resource.uri, 'ui://picker/v3/options.html');
         assert.strictEqual(resource.mimeType, 'text/html;profile=mcp-app');
     });
 
@@ -90,12 +90,14 @@ describe('picker MCP App resource', function () {
         controls[0].checked = true;
         controls[0].listeners.change();
         assert.strictEqual(elements.submit.disabled, false);
+        elements.feedback.value = 'Use this option, but make it calmer.';
+        elements.feedback.listeners.input();
 
         elements.submit.listeners.click();
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[2])), {
             jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
                 name: 'picker_submit',
-                arguments: { selectionMode: 'multiple', selectedIds: ['option_a'], feedback: '' }
+                arguments: { selectionMode: 'multiple', selectedIds: ['option_a'], feedback: 'Use this option, but make it calmer.' }
             }
         });
         listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 2, result: {
@@ -104,9 +106,9 @@ describe('picker MCP App resource', function () {
         await new Promise(resolve => setImmediate(resolve));
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[3])), {
             jsonrpc: '2.0', id: 3, method: 'ui/update-model-context', params: {
-                content: [{ type: 'text', text: 'Picker selection: option_a. Continue using this selection.' }],
+                content: [{ type: 'text', text: 'Picker selection: option_a. Feedback: Use this option, but make it calmer. Continue using this selection.' }],
                 structuredContent: {
-                    type: 'picker_selection', selectionMode: 'multiple', selectedIds: ['option_a'], feedback: ''
+                    type: 'picker_selection', selectionMode: 'multiple', selectedIds: ['option_a'], feedback: 'Use this option, but make it calmer.'
                 }
             }
         });
@@ -114,7 +116,7 @@ describe('picker MCP App resource', function () {
         await new Promise(resolve => setImmediate(resolve));
         assert.deepStrictEqual(JSON.parse(JSON.stringify(sent[4])), {
             jsonrpc: '2.0', id: 4, method: 'ui/message', params: {
-                role: 'user', content: [{ type: 'text', text: 'Picker selection: option_a. Continue using this selection.' }]
+                role: 'user', content: [{ type: 'text', text: 'Picker selection: option_a. Feedback: Use this option, but make it calmer. Continue using this selection.' }]
             }
         });
         listeners.message({ source: parent, data: { jsonrpc: '2.0', id: 4, result: {} } });

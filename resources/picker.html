@@ -182,10 +182,14 @@ button:disabled { opacity: .42; cursor: not-allowed; }
     </footer>
   </section>
 <script>
-const optionsEl=document.getElementById('options'),submit=document.getElementById('submit'),statusEl=document.getElementById('status');
-let output={},input={},hostCapabilities={},submitting=false;let nextId=1;const pending=new Map();
+const optionsEl=document.getElementById('options'),submit=document.getElementById('submit'),statusEl=document.getElementById('status'),feedbackEl=document.getElementById('feedback');
+let output={},input={},hostCapabilities={},submitting=false,feedbackValue='';let nextId=1;const pending=new Map();
 function request(method,params){const id=nextId++;return new Promise((resolve,reject)=>{pending.set(id,{resolve,reject});window.parent.postMessage({jsonrpc:'2.0',id,method,params},'*');});}
 function values(){return [...document.querySelectorAll('input[name=picker-option]:checked')].map(x=>x.value);}
+function readFeedback(){return String((feedbackEl&&feedbackEl.value)||feedbackValue||'').trim();}
+function updateFeedback(){feedbackValue=feedbackEl?String(feedbackEl.value||''):'';}
+feedbackEl.addEventListener('input',updateFeedback);
+feedbackEl.addEventListener('change',updateFeedback);
 function updateSubmitState(){submit.disabled=submitting||!values().length;}
 function selectionText(selection){const feedback=selection.feedback?` Feedback: ${selection.feedback}`:'';return `Picker selection: ${selection.selectedIds.join(', ')}.${feedback} Continue using this selection.`;}
 function canHandoff(){return Boolean(hostCapabilities.updateModelContext&&hostCapabilities.message);}
@@ -194,7 +198,7 @@ function render(data){output=data||{};const list=Array.isArray(output.options)?o
 window.addEventListener('message',event=>{if(event.source!==window.parent)return;const message=event.data;if(!message||message.jsonrpc!=='2.0')return;if(message.id!==undefined&&pending.has(message.id)){const call=pending.get(message.id);pending.delete(message.id);message.error?call.reject(message.error):call.resolve(message.result);return;}if(message.method==='ui/notifications/tool-input'){input=message.params?.arguments||{};}if(message.method==='ui/notifications/tool-result'){render(message.params?.structuredContent||{});}}, {passive:true});
 async function initialize(){try{const result=await request('ui/initialize',{protocolVersion:'2026-01-26',appInfo:{name:'Picker',version:'1.0.0'},appCapabilities:{availableDisplayModes:['inline']}});hostCapabilities=result?.hostCapabilities||{};window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'},'*');}catch(error){statusEl.textContent='Could not initialize picker.';}}
 initialize();
-submit.addEventListener('click',async()=>{const selectedIds=values();if(!selectedIds.length){statusEl.textContent='Choose at least one option.';return;}submitting=true;updateSubmitState();statusEl.textContent='Sending selection…';const selection={selectionMode:output.selectionMode||input.selectionMode||'single',selectedIds,feedback:document.getElementById('feedback').value.trim()};try{const result=await request('tools/call',{name:'picker_submit',arguments:selection});if(result?.isError)throw new Error(result?.content?.[0]?.text||'Selection validation failed.');if(!canHandoff()){statusEl.textContent='Selection validated, but this host cannot send it to the conversation.';return;}await request('ui/update-model-context',{content:[{type:'text',text:selectionText(selection)}],structuredContent:{type:'picker_selection',...selection}});await request('ui/message',{role:'user',content:[{type:'text',text:selectionText(selection)}]});statusEl.textContent='Selection sent.';}catch(error){statusEl.textContent=error?.message||'Could not submit selection.';}finally{submitting=false;updateSubmitState();}});
+submit.addEventListener('click',async()=>{const selectedIds=values();if(!selectedIds.length){statusEl.textContent='Choose at least one option.';return;}submitting=true;updateSubmitState();statusEl.textContent='Sending selection…';updateFeedback();const selection={selectionMode:output.selectionMode||input.selectionMode||'single',selectedIds,feedback:readFeedback()};try{const result=await request('tools/call',{name:'picker_submit',arguments:selection});if(result?.isError)throw new Error(result?.content?.[0]?.text||'Selection validation failed.');if(!canHandoff()){statusEl.textContent='Selection validated, but this host cannot send it to the conversation.';return;}await request('ui/update-model-context',{content:[{type:'text',text:selectionText(selection)}],structuredContent:{type:'picker_selection',...selection}});await request('ui/message',{role:'user',content:[{type:'text',text:selectionText(selection)}]});statusEl.textContent='Selection sent.';}catch(error){statusEl.textContent=error?.message||'Could not submit selection.';}finally{submitting=false;updateSubmitState();}});
 </script>
 </body>
 </html>
