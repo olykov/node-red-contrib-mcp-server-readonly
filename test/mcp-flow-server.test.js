@@ -239,6 +239,7 @@ describe('upstream mcp-flow-server local extensions', () => {
     });
 
     it('does not expose admin tools without complete runtime admin config', () => {
+        delete process.env.NODE_RED_ADMIN_API_TOKEN;
         const { server } = buildServer({
             serverName: 'ops',
             serverPath: '/internal/mcp/ops',
@@ -253,6 +254,30 @@ describe('upstream mcp-flow-server local extensions', () => {
         const res = mockRes();
         server.handleToolsList({ id: 1 }, res);
         assert.ok(!res.body.result.tools.some(tool => tool.name === 'get_flow'));
+    });
+
+    it('uses NODE_RED_ADMIN_API_TOKEN for admin tool gating', () => {
+        process.env.NODE_RED_ADMIN_API_TOKEN = 'env-token';
+        try
+        {
+            const { server } = buildServer({
+                serverName: 'ops',
+                serverPath: '/internal/mcp/ops',
+                enablePicker: false,
+                __runtime: {
+                    serverPort: 18007,
+                    adminPort: 1881,
+                    adminEndpointPath: '/internal/mcp/ops',
+                    credentials: { adminToken: '' }
+                }
+            });
+            const res = mockRes();
+            server.handleToolsList({ id: 1 }, res);
+            assert.ok(res.body.result.tools.some(tool => tool.name === 'get_flow'));
+        } finally
+        {
+            delete process.env.NODE_RED_ADMIN_API_TOKEN;
+        }
     });
 
 

@@ -96,14 +96,14 @@
     </div>
     <div class="form-row">
         <label for="node-config-input-adminToken"><i class="fa fa-key"></i> Admin Token</label>
-        <input type="password" id="node-config-input-adminToken" autocomplete="off">
+        <input type="password" id="node-config-input-adminToken" autocomplete="off" placeholder="Uses NODE_RED_ADMIN_API_TOKEN when empty">
     </div>
     <div class="form-row">
         <label for="node-config-input-adminEndpointPath"><i class="fa fa-link"></i> Admin Endpoint Path</label>
         <input type="text" id="node-config-input-adminEndpointPath" placeholder="/internal/mcp/nodered-ops">
     </div>
     <div class="form-tips mcp-admin-tools-note">
-        Admin tools are exposed only when Admin Port, Admin Token, and Admin Endpoint Path are set, and an MCP Flow Server on this runtime uses exactly that path.
+        Admin tools are exposed only when Admin Port, Admin Token or NODE_RED_ADMIN_API_TOKEN, and Admin Endpoint Path are set, and an MCP Flow Server on this runtime uses exactly that path.
     </div>
 </script>
 
@@ -201,11 +201,11 @@
         <dt>Admin Port <span class="property-type">number</span></dt>
         <dd>Local Node-RED Admin API port used by read-only admin tools.</dd>
         <dt>Admin Token <span class="property-type">credential</span></dt>
-        <dd>Bearer token sent to the local Node-RED Admin API.</dd>
+        <dd>Bearer token sent to the local Node-RED Admin API. Leave empty to use <code>NODE_RED_ADMIN_API_TOKEN</code>.</dd>
         <dt>Admin Endpoint Path <span class="property-type">string</span></dt>
         <dd>Exact MCP path allowed to expose read-only admin tools.</dd>
     </dl>
-    <p>Admin tools are exposed only when Admin Port, Admin Token, and Admin Endpoint Path are set, and an MCP Flow Server on this runtime uses exactly that path.</p>
+    <p>Admin tools are exposed only when Admin Port, Admin Token or <code>NODE_RED_ADMIN_API_TOKEN</code>, and Admin Endpoint Path are set, and an MCP Flow Server on this runtime uses exactly that path.</p>
 </script>
 
 <script type="text/html" data-help-name="mcp-flow-server">

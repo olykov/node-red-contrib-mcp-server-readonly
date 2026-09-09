@@ -54,12 +54,17 @@ module.exports = function (RED)
         return config.runtime && getNode ? getNode(config.runtime) : null;
     }
 
+    function runtimeAdminToken(runtime)
+    {
+        return process.env.NODE_RED_ADMIN_API_TOKEN || (runtime && runtime.adminToken) || '';
+    }
+
     function hasAdminTools(runtime, serverPath)
     {
         return Boolean(
             runtime &&
             runtime.adminPort &&
-            runtime.adminToken &&
+            runtimeAdminToken(runtime) &&
             runtime.adminEndpointPath &&
             normalizePath(runtime.adminEndpointPath) === serverPath
         );
@@ -255,7 +260,7 @@ module.exports = function (RED)
         node.enablePicker = config.enablePicker !== false;
         node.adminToolsEnabled = hasAdminTools(runtime, node.serverPath);
         node.adminPort = runtime ? runtime.adminPort : 0;
-        node.adminToken = runtime ? runtime.adminToken : '';
+        node.adminToken = runtimeAdminToken(runtime);
         node.adminTools = createAdminTools({ adminPort: node.adminPort, getAdminToken: () => node.adminToken });
 
         node.httpServer = null;
