@@ -13,10 +13,13 @@ Included nodes:
 - `mcp-tool`
 - `mcp-flow-server`
 - `mcp-tool-registry`
+- `mcp-endpoint` config node
 
 Local extensions:
 
-- `_meta.securitySchemes` advertisement on tool descriptors when scopes are configured.
+- Endpoint config nodes for logical MCP names, paths, base scopes, and optional read-only admin tools.
+- Endpoint-scoped and shared tool registration.
+- Per-tool required scopes in `_meta.securitySchemes`.
 - Text-only MCP Apps picker resource and `picker_submit` helper tool.
 - Optional read-only `get_flow` tool for Node-RED flow inspection.
 - Tests for the read-only admin boundary and flow-server execution path.
@@ -60,7 +63,7 @@ npm link @olykov/node-red-contrib-mcp-server-readonly
 
 ## Flow Server Extensions
 
-`mcp-flow-server` keeps the upstream request/response contract.
+`mcp-flow-server` keeps the upstream request/response contract. New flows should select an `mcp-endpoint` config node. Legacy inline server name and path fields are still read at runtime so existing flows can be migrated deliberately.
 
 Tool execution request emitted by the flow server:
 
@@ -80,11 +83,13 @@ msg.payload = { executionId, result };
 
 ## Configuration Notes
 
-`OAuth Scopes` only advertises scopes in tool metadata. It does not validate tokens and does not make Node-RED an OAuth server.
+`mcp-endpoint` base scopes and `mcp-tool-registry` required scopes only advertise scopes in tool metadata. They do not validate tokens and do not make Node-RED an OAuth server.
+
+`mcp-tool-registry` can bind a tool to one endpoint. Leaving the endpoint empty exposes the tool on every endpoint in the same Node-RED runtime.
 
 `Picker App` exposes the picker resource and `picker_submit` helper tool.
 
-`Admin Tools` exposes read-only `get_flow`. Keep it disabled unless the MCP endpoint is protected by an authenticated gateway.
+`Admin Tools` exposes read-only `get_flow` for an endpoint. Keep it disabled unless the MCP endpoint is protected by an authenticated gateway.
 
 ## Verification
 
