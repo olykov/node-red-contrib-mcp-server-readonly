@@ -154,15 +154,6 @@
                 }
             });
 
-            // Load Omnispindle preset
-            $("#load-omnispindle-preset-btn").click(function() {
-                $("#node-input-serverUrl").val("http://localhost:8000");
-                $("#node-input-connectionType").val("sse");
-                $("#node-input-autoConnect").prop('checked', true);
-                $("#node-input-reconnect").prop('checked', true);
-                updateConnectionTypeInfo();
-                RED.notify("Omnispindle preset loaded", "success");
-            });
 
             // URL validation
             $("#node-input-serverUrl").on('input', function() {
@@ -238,14 +229,6 @@
         <span style="margin-left: 10px; font-size: 12px; color: #666;">milliseconds</span>
     </div>
 
-    <!-- Preset Buttons -->
-    <hr>
-    <div class="form-row">
-        <label></label>
-        <button type="button" id="load-omnispindle-preset-btn" class="btn btn-primary">
-            <i class="fa fa-download"></i> Load Omnispindle Preset
-        </button>
-    </div>
 </script>
 
 <script type="text/html" data-help-name="mcp-client">
@@ -339,19 +322,19 @@
         "serverUrl": "http://localhost:8000",
         "connectionType": "sse",
         "serverInfo": {
-            "name": "omnispindle-mcp",
+            "name": "example-mcp",
             "version": "1.0.0",
             "capabilities": {...}
         },
         "availableTools": [
             {
-                "name": "add_todo_tool",
-                "description": "Create a new todo item",
+                "name": "example_tool",
+                "description": "Run an example tool",
                 "inputSchema": {...}
             }
         ],
         "toolCount": 12,
-        "toolNames": ["add_todo_tool", "list_todos_tool", ...],
+        "toolNames": ["example_tool", "status_tool", ...],
         "mcpSyntax": {
             "requestFormat": {
                 "topic": "request",
@@ -363,10 +346,9 @@
             "exampleCall": {
                 "topic": "request", 
                 "payload": {
-                    "method": "add_todo_tool",
+                    "method": "example_tool",
                     "params": {
-                        "description": "example_string",
-                        "project": "Omnispindle"
+                        "input": "example_string"
                     }
                 }
             }
@@ -379,33 +361,30 @@
     <pre><code>{
     "topic": "request",
     "payload": {
-        "method": "add_todo_tool",
+        "method": "example_tool",
         "params": {
-            "description": "Task description",
-            "project": "ProjectName"
+            "input": "Example input"
         }
     }
 }</code></pre>
 
     <h3>Examples</h3>
-    <p><strong>Connect to Omnispindle:</strong></p>
+    <p><strong>Connect to an MCP server:</strong></p>
     <ul>
         <li>Server URL: <code>http://localhost:8000</code></li>
-        <li>Connection Type: Server-Sent Events</li>
+        <li>Connection Type: HTTP, Server-Sent Events, or WebSocket</li>
         <li>Auto Connect: Enabled</li>
     </ul>
 
     <p><strong>Call MCP Tool:</strong></p>
     <pre><code>msg.topic = "request";
 msg.payload = {
-    method: "list_todos_by_status_tool",
-    params: { status: "pending" }
+    method: "example_tool",
+    params: { input: "example" }
 };
 return msg;</code></pre>
 
-    <h3>Omnispindle Integration</h3>
-    <p>This client is designed to work seamlessly with the Omnispindle MCP server included in this project. Use the "Load Omnispindle Preset" button to automatically configure for local Omnispindle connections.</p>
 
     <h3>Requirements</h3>
-    <p>The target MCP server must be running and accessible at the specified URL. For Omnispindle, ensure the server is started with the MCP server node or manually.</p>
+    <p>The target MCP server must be running and accessible at the specified URL.</p>
 </script> 

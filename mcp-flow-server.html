@@ -85,14 +85,6 @@
                 });
             });
 
-            // Load Todo MCP preset
-            $("#load-todo-preset-btn").click(function() {
-                $("#node-input-serverName").val("todo-mcp-server");
-                $("#node-input-serverPort").val(8001);
-                $("#node-input-autoStart").prop('checked', true);
-                $("#node-input-enableCors").prop('checked', true);
-                RED.notify("Todo MCP Server preset loaded", "success");
-            });
 
             // Refresh flow servers status
             $("#refresh-status-btn").click(loadFlowServers);
@@ -186,14 +178,6 @@
         <input type="password" id="node-input-adminToken" placeholder="NODE_RED_ADMIN_API_TOKEN" autocomplete="off">
     </div>
 
-    <!-- Preset Buttons -->
-    <hr>
-    <div class="form-row">
-        <label></label>
-        <button type="button" id="load-todo-preset-btn" class="btn btn-primary">
-            <i class="fa fa-download"></i> Load Todo MCP Preset
-        </button>
-    </div>
 
     <!-- Flow Server Status -->
     <hr>

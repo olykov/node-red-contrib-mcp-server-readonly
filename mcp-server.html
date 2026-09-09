@@ -91,17 +91,6 @@
                 }, 1000);
             });
 
-            // Load Omnispindle preset
-            $("#load-omnispindle-preset-btn").click(function() {
-                $("#node-input-serverName").val("omnispindle");
-                $("#node-input-serverType").val("python");
-                $("#node-input-serverPath").val("src/Omnispindle/__init__.py");
-                $("#node-input-serverArgs").val("--host 0.0.0.0 --port 8000");
-                $("#node-input-serverPort").val(8000);
-                $("#node-input-autoStart").prop('checked', true);
-                updateServerTypeFields();
-                RED.notify("Omnispindle preset loaded", "success");
-            });
 
             // Advanced settings toggle
             $("#advanced-toggle").click(function() {
@@ -172,13 +161,6 @@
         <span style="margin-left: 10px; font-size: 12px; color: #666;">Automatically start server when Node-RED starts</span>
     </div>
 
-    <!-- Preset Buttons -->
-    <div class="form-row">
-        <label></label>
-        <button type="button" id="load-omnispindle-preset-btn" class="btn btn-primary">
-            <i class="fa fa-download"></i> Load Omnispindle Preset
-        </button>
-    </div>
 
     <!-- Advanced Settings -->
     <hr>
@@ -289,14 +271,12 @@
         <dd>Server process exited with exit code and signal</dd>
     </dl>
 
-    <h3>Omnispindle Integration</h3>
-    <p>This node includes a preset for the Omnispindle MCP server from this project. Use the "Load Omnispindle Preset" button to automatically configure the node for running the local Omnispindle server.</p>
 
     <h3>Examples</h3>
     <p><strong>Python FastMCP Server:</strong></p>
     <ul>
         <li>Server Type: Python</li>
-        <li>Server Path: <code>src/Omnispindle/__init__.py</code></li>
+        <li>Server Path: <code>/path/to/server.py</code></li>
         <li>Server Args: <code>--host 0.0.0.0 --port 8000</code></li>
     </ul>
 

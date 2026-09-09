@@ -107,7 +107,6 @@ module.exports = function (RED)
             // Override with specific message properties
             if (msg.description) params.description = msg.description;
             if (msg.project) params.project = msg.project;
-            if (msg.todo_id) params.todo_id = msg.todo_id;
             if (msg.status) params.status = msg.status;
             if (msg.priority) params.priority = msg.priority;
 

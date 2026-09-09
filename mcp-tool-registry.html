@@ -28,9 +28,9 @@
                     name: "Simple Parameters",
                     schema: '{\n  "type": "object",\n  "properties": {\n    "input": {\n      "type": "string",\n      "description": "Input parameter"\n    }\n  },\n  "required": ["input"]\n}'
                 },
-                "todo": {
-                    name: "Todo Tool",
-                    schema: '{\n  "type": "object",\n  "properties": {\n    "description": {\n      "type": "string",\n      "description": "Todo description"\n    },\n    "project": {\n      "type": "string",\n      "description": "Project name"\n    },\n    "priority": {\n      "type": "string",\n      "enum": ["Low", "Medium", "High"],\n      "description": "Priority level"\n    }\n  },\n  "required": ["description"]\n}'
+                "message": {
+                    name: "Message Tool",
+                    schema: '{\n  "type": "object",\n  "properties": {\n    "message": {\n      "type": "string",\n      "description": "Message to process"\n    },\n    "category": {\n      "type": "string",\n      "description": "Optional category"\n    },\n    "priority": {\n      "type": "string",\n      "enum": ["low", "medium", "high"],\n      "description": "Priority level"\n    }\n  },\n  "required": ["message"]\n}'
                 },
                 "calculator": {
                     name: "Calculator Tool",
@@ -108,12 +108,12 @@
             });
 
             // Generate example tools
-            $("#generate-todo-tool-btn").click(function() {
-                $("#node-input-name").val("Add Todo");
-                $("#node-input-toolName").val("add_todo_tool");
-                $("#node-input-toolDescription").val("Create a new todo item with description and project");
-                $("#node-input-toolSchema").val(schemaTemplates.todo.schema);
-                RED.notify("Todo tool template created", "success");
+            $("#generate-message-tool-btn").click(function() {
+                $("#node-input-name").val("Process Message");
+                $("#node-input-toolName").val("process_message_tool");
+                $("#node-input-toolDescription").val("Process a message with optional category and priority");
+                $("#node-input-toolSchema").val(schemaTemplates.message.schema);
+                RED.notify("Message tool template created", "success");
             });
 
             $("#generate-calc-tool-btn").click(function() {
@@ -201,8 +201,8 @@
     
     <div class="form-row">
         <label></label>
-        <button type="button" id="generate-todo-tool-btn" class="btn btn-primary" style="margin-right: 10px;">
-            <i class="fa fa-check-square-o"></i> Generate Todo Tool
+        <button type="button" id="generate-message-tool-btn" class="btn btn-primary" style="margin-right: 10px;">
+            <i class="fa fa-check-square-o"></i> Generate Message Tool
         </button>
         <button type="button" id="generate-calc-tool-btn" class="btn btn-primary">
             <i class="fa fa-calculator"></i> Generate Calculator Tool
@@ -244,7 +244,7 @@
     <p>Tool names should follow these rules:</p>
     <ul>
         <li>Lowercase letters, numbers, and underscores only</li>
-        <li>Must end with '_tool' (e.g., 'add_todo_tool')</li>
+        <li>Must end with '_tool' (e.g., 'process_message_tool')</li>
         <li>Should be descriptive and unique</li>
         <li>Examples: 'calculate_sum_tool', 'send_email_tool', 'get_weather_tool'</li>
     </ul>
@@ -297,7 +297,7 @@
     <p>Use the built-in templates for common tool types:</p>
     <ul>
         <li><strong>Simple Parameters:</strong> Basic string input</li>
-        <li><strong>Todo Tool:</strong> Task creation with description and project</li>
+        <li><strong>Message Tool:</strong> Message processing with category and priority</li>
         <li><strong>Calculator Tool:</strong> Mathematical operations</li>
         <li><strong>API Call Tool:</strong> HTTP request parameters</li>
     </ul>
@@ -340,7 +340,7 @@ Schema:
     <h3>Quick Tool Generation</h3>
     <p>Use the generation buttons to create common tool types instantly:</p>
     <ul>
-        <li><strong>Todo Tool:</strong> Creates task management tool template</li>
+        <li><strong>Message Tool:</strong> Creates generic message processing tool</li>
         <li><strong>Calculator Tool:</strong> Creates mathematical calculation tool</li>
     </ul>
 

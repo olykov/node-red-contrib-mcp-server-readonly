@@ -98,38 +98,6 @@
                 }
             });
 
-            // Omnispindle tool presets
-            var omnispindleTools = [
-                { name: "add_todo_tool", params: '{"description": "", "project": ""}' },
-                { name: "get_todo_tool", params: '{"todo_id": ""}' },
-                { name: "list_todos_by_status_tool", params: '{"status": "pending"}' },
-                { name: "update_todo_tool", params: '{"todo_id": "", "updates": {}}' },
-                { name: "delete_todo_tool", params: '{"todo_id": ""}' },
-                { name: "mark_todo_complete_tool", params: '{"todo_id": ""}' },
-                { name: "list_project_todos_tool", params: '{"project": ""}' },
-                { name: "query_todos_tool", params: '{"query_or_filter": ""}' }
-            ];
-
-            // Populate Omnispindle tools dropdown
-            var omnispindleSelect = $("#omnispindle-tools");
-            omnispindleTools.forEach(function(tool) {
-                var option = $('<option></option>')
-                    .attr('value', JSON.stringify(tool))
-                    .text(tool.name.replace('_tool', '').replace(/_/g, ' '));
-                omnispindleSelect.append(option);
-            });
-
-            // Load Omnispindle preset
-            $("#load-omnispindle-tool-btn").click(function() {
-                var selectedTool = $("#omnispindle-tools").val();
-                if (selectedTool) {
-                    var tool = JSON.parse(selectedTool);
-                    $("#node-input-serverUrl").val("http://localhost:8000");
-                    $("#node-input-toolName").val(tool.name);
-                    $("#node-input-toolParams").val(tool.params);
-                    RED.notify(`Loaded ${tool.name} preset`, "success");
-                }
-            });
 
             // Validate JSON parameters
             $("#node-input-toolParams").on('blur', function() {
@@ -236,19 +204,6 @@
         <span style="margin-left: 10px; font-size: 12px; color: #666;">milliseconds</span>
     </div>
 
-    <!-- Omnispindle Presets -->
-    <hr>
-    <h4>Quick Setup</h4>
-    
-    <div class="form-row">
-        <label for="omnispindle-tools"><i class="fa fa-magic"></i> Omnispindle Tools</label>
-        <select id="omnispindle-tools">
-            <option value="">Select a preset...</option>
-        </select>
-        <button type="button" id="load-omnispindle-tool-btn" class="btn btn-primary" style="margin-top: 5px;">
-            <i class="fa fa-download"></i> Load Selected Tool
-        </button>
-    </div>
 </script>
 
 <script type="text/html" data-help-name="mcp-tool">
@@ -300,35 +255,10 @@
         <dd>Parameters to merge with defaults when payload is structured</dd>
     </dl>
 
-    <h3>Omnispindle Tool Shortcuts</h3>
-    <p>The following specific message properties are recognized for Omnispindle tools:</p>
-    <dl class="message-properties">
-        <dt>msg.description <span class="property-type">string</span></dt>
-        <dd>Todo description for add/update operations</dd>
-        
-        <dt>msg.project <span class="property-type">string</span></dt>
-        <dd>Project name for todo operations</dd>
-        
-        <dt>msg.todo_id <span class="property-type">string</span></dt>
-        <dd>Todo ID for update/delete/complete operations</dd>
-        
-        <dt>msg.status <span class="property-type">string</span></dt>
-        <dd>Status filter for list operations</dd>
-        
-        <dt>msg.priority <span class="property-type">string</span></dt>
-        <dd>Priority level for todo operations</dd>
-    </dl>
 
     <h3>Examples</h3>
-    <p><strong>Create Todo (using shortcuts):</strong></p>
-    <pre><code>msg.description = "Implement new feature";
-msg.project = "MyProject";
-// Tool configured as "add_todo_tool"
-return msg;</code></pre>
-
-    <p><strong>List Todos by Status:</strong></p>
-    <pre><code>msg.payload = { status: "pending" };
-// Tool configured as "list_todos_by_status_tool"
+    <p><strong>Call a configured tool:</strong></p>
+    <pre><code>msg.payload = { input: "example" };
 return msg;</code></pre>
 
     <p><strong>Override Tool Name:</strong></p>
@@ -336,16 +266,6 @@ return msg;</code></pre>
 msg.payload = { param1: "value1" };
 return msg;</code></pre>
 
-    <h3>Available Omnispindle Tools</h3>
-    <ul>
-        <li><strong>add_todo_tool:</strong> Create new todos</li>
-        <li><strong>list_todos_by_status_tool:</strong> List todos by status</li>
-        <li><strong>update_todo_tool:</strong> Update existing todos</li>
-        <li><strong>delete_todo_tool:</strong> Delete todos</li>
-        <li><strong>mark_todo_complete_tool:</strong> Mark todos as complete</li>
-        <li><strong>list_project_todos_tool:</strong> List todos for a project</li>
-        <li><strong>query_todos_tool:</strong> Search/query todos</li>
-    </ul>
 
     <h3>Dynamic Tool Loading</h3>
     <p>Use the "Load Available Tools" button to fetch and populate tools from the connected MCP server. This helps discover available tools dynamically.</p>
