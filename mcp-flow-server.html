@@ -1,19 +1,20 @@
 <script type="text/javascript">
-    RED.nodes.registerType('mcp-endpoint', {
+    RED.nodes.registerType('mcp-runtime', {
         category: 'config',
         defaults: {
             name: { value: '' },
-            serverName: { value: 'node-red-mcp-server', required: true },
-            serverPath: { value: '/mcp', required: true },
-            advertisedScopes: { value: '' },
-            adminToolsEnabled: { value: false },
-            adminPort: { value: 1880, required: true, validate: RED.validators.number() }
+            runtimeName: { value: 'mcp-runtime', required: true },
+            serverPort: { value: 8001, required: true, validate: function(v) { return v > 0 && v < 65536; } },
+            autoStart: { value: false },
+            enableCors: { value: true },
+            adminPort: { value: 1880, required: false, validate: function(v) { return v === '' || (v > 0 && v < 65536); } },
+            adminEndpointPath: { value: '' }
         },
         credentials: {
             adminToken: { type: 'password' }
         },
         label: function() {
-            return this.name || this.serverName || 'MCP Endpoint';
+            return this.name || this.runtimeName || 'MCP Runtime';
         }
     });
 
@@ -22,19 +23,11 @@
         color: '#9C27B0',
         defaults: {
             name: { value: '' },
-            endpoint: { value: '', type: 'mcp-endpoint', required: false },
-            serverName: { value: 'node-red-mcp-server', required: false },
-            serverPath: { value: '/mcp', required: false },
-            serverPort: { value: 8001, required: true, validate: function(v) { return v > 0 && v < 65536; } },
-            autoStart: { value: false },
-            enableCors: { value: true },
+            runtime: { value: '', type: 'mcp-runtime', required: true },
+            serverName: { value: 'node-red-mcp-server', required: true },
+            serverPath: { value: '/mcp', required: true },
             advertisedScopes: { value: '' },
-            enablePicker: { value: true },
-            adminToolsEnabled: { value: false },
-            adminPort: { value: 1880 }
-        },
-        credentials: {
-            adminToken: { type: 'password' }
+            enablePicker: { value: true }
         },
         inputs: 1,
         outputs: 1,
@@ -66,66 +59,37 @@
                     });
             }
 
-            $('#test-port-btn').click(function() {
-                var button = $(this);
-                var originalText = button.text();
-                var port = $('#node-input-serverPort').val();
-                if (!port) {
-                    RED.notify('Port is required', 'error');
-                    return;
-                }
-                button.text('Testing...').prop('disabled', true);
-                $.ajax({ url: 'http://localhost:' + port + '/health', method: 'GET', timeout: 3000 })
-                    .done(function() {
-                        button.text(originalText).prop('disabled', false);
-                        RED.notify('Port is already in use', 'warning');
-                    })
-                    .fail(function(xhr) {
-                        button.text(originalText).prop('disabled', false);
-                        RED.notify(xhr.status === 0 ? 'Port appears to be available' : 'Port is already in use', xhr.status === 0 ? 'success' : 'warning');
-                    });
-            });
-
             $('#refresh-status-btn').click(loadFlowServers);
             setTimeout(loadFlowServers, 500);
-
-            $('#node-input-serverPort').on('input', function() {
-                var port = parseInt($(this).val(), 10);
-                var isValid = port > 0 && port < 65536;
-                if (port && !isValid) {
-                    $(this).addClass('input-error');
-                    $('#port-validation').show().text('Port must be between 1 and 65535');
-                } else {
-                    $(this).removeClass('input-error');
-                    $('#port-validation').hide();
-                }
-            });
         }
     });
 </script>
 
-<script type="text/html" data-template-name="mcp-endpoint">
+<script type="text/html" data-template-name="mcp-runtime">
     <div class="form-row">
         <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-config-input-name" placeholder="Optional display name">
     </div>
     <div class="form-row">
-        <label for="node-config-input-serverName"><i class="fa fa-server"></i> MCP Name</label>
-        <input type="text" id="node-config-input-serverName" placeholder="node-red-mcp-server">
+        <label for="node-config-input-runtimeName"><i class="fa fa-server"></i> Runtime Name</label>
+        <input type="text" id="node-config-input-runtimeName" placeholder="mcp-runtime">
     </div>
     <div class="form-row">
-        <label for="node-config-input-serverPath"><i class="fa fa-link"></i> MCP Path</label>
-        <input type="text" id="node-config-input-serverPath" placeholder="/mcp">
+        <label for="node-config-input-serverPort"><i class="fa fa-plug"></i> Port</label>
+        <input type="number" id="node-config-input-serverPort" min="1" max="65535" placeholder="8001">
     </div>
     <div class="form-row">
-        <label for="node-config-input-advertisedScopes"><i class="fa fa-lock"></i> Base Scopes</label>
-        <input type="text" id="node-config-input-advertisedScopes" placeholder="openid profile email">
+        <label for="node-config-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
+        <input type="checkbox" id="node-config-input-autoStart" style="width: auto;">
     </div>
     <div class="form-row">
-        <label for="node-config-input-adminToolsEnabled"><i class="fa fa-shield"></i> Admin Tools</label>
-        <input type="checkbox" id="node-config-input-adminToolsEnabled" style="width: auto;">
-        <span class="mcp-editor-note">Expose read-only admin tools on this endpoint.</span>
+        <label for="node-config-input-enableCors"><i class="fa fa-globe"></i> CORS</label>
+        <input type="checkbox" id="node-config-input-enableCors" style="width: auto;">
     </div>
+
+    <hr>
+    <h4>Admin Tools</h4>
+
     <div class="form-row">
         <label for="node-config-input-adminPort"><i class="fa fa-plug"></i> Admin Port</label>
         <input type="number" id="node-config-input-adminPort" min="1" max="65535" placeholder="1880">
@@ -133,6 +97,13 @@
     <div class="form-row">
         <label for="node-config-input-adminToken"><i class="fa fa-key"></i> Admin Token</label>
         <input type="password" id="node-config-input-adminToken" autocomplete="off">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-adminEndpointPath"><i class="fa fa-link"></i> Admin Endpoint Path</label>
+        <input type="text" id="node-config-input-adminEndpointPath" placeholder="/internal/mcp/nodered-ops">
+    </div>
+    <div class="form-tips mcp-admin-tools-note">
+        Admin tools are exposed only when Admin Port, Admin Token, and Admin Endpoint Path are set, and an MCP Flow Server on this runtime uses exactly that path.
     </div>
 </script>
 
@@ -143,30 +114,24 @@
     </div>
 
     <div class="form-row">
-        <label for="node-input-endpoint"><i class="fa fa-sitemap"></i> Endpoint</label>
-        <input type="text" id="node-input-endpoint">
+        <label for="node-input-runtime"><i class="fa fa-sitemap"></i> Runtime</label>
+        <input type="text" id="node-input-runtime">
     </div>
 
     <hr>
-    <h4>Runtime</h4>
+    <h4>MCP Endpoint</h4>
 
     <div class="form-row">
-        <label for="node-input-serverPort"><i class="fa fa-plug"></i> Port</label>
-        <input type="number" id="node-input-serverPort" min="1" max="65535" placeholder="8001">
-        <div id="port-validation" class="mcp-validation"></div>
-        <button type="button" id="test-port-btn" class="btn btn-secondary mcp-button-row">
-            <i class="fa fa-check"></i> Test Port
-        </button>
+        <label for="node-input-serverName"><i class="fa fa-server"></i> MCP Name</label>
+        <input type="text" id="node-input-serverName" placeholder="node-red-mcp-server">
     </div>
-
     <div class="form-row">
-        <label for="node-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
-        <input type="checkbox" id="node-input-autoStart" style="width: auto;">
+        <label for="node-input-serverPath"><i class="fa fa-link"></i> MCP Path</label>
+        <input type="text" id="node-input-serverPath" placeholder="/mcp">
     </div>
-
     <div class="form-row">
-        <label for="node-input-enableCors"><i class="fa fa-globe"></i> CORS</label>
-        <input type="checkbox" id="node-input-enableCors" style="width: auto;">
+        <label for="node-input-advertisedScopes"><i class="fa fa-lock"></i> Base Scopes</label>
+        <input type="text" id="node-input-advertisedScopes" placeholder="openid profile email">
     </div>
 
     <hr>
@@ -216,36 +181,45 @@
         .mcp-flow-server-status ul {
             color: inherit;
         }
+        .mcp-admin-tools-note {
+            color: var(--red-ui-primary-text-color, #333);
+            background: var(--red-ui-secondary-background, #f8f9fa);
+        }
     </style>
 </script>
 
-<script type="text/html" data-help-name="mcp-endpoint">
-    <p>Defines a logical MCP endpoint: public name, HTTP path, advertised OAuth scopes, and optional read-only admin tools.</p>
+<script type="text/html" data-help-name="mcp-runtime">
+    <p>Defines a local MCP HTTP runtime shared by one or more MCP Flow Server endpoints.</p>
     <h3>Fields</h3>
     <dl class="message-properties">
-        <dt>MCP Name <span class="property-type">string</span></dt>
-        <dd>Name returned in MCP initialize responses and used for endpoint-scoped tool registration.</dd>
-        <dt>MCP Path <span class="property-type">string</span></dt>
-        <dd>HTTP JSON-RPC path served by an MCP Flow Server, for example <code>/internal/mcp/ops</code>.</dd>
-        <dt>Base Scopes <span class="property-type">string</span></dt>
-        <dd>Space- or comma-separated scopes advertised on tools exposed by this endpoint.</dd>
-        <dt>Admin Tools <span class="property-type">boolean</span></dt>
-        <dd>Exposes read-only admin tools for this endpoint. Keep this behind an authenticated gateway.</dd>
+        <dt>Port <span class="property-type">number</span></dt>
+        <dd>Local HTTP port. Multiple MCP Flow Server nodes may share one runtime port when their MCP paths differ.</dd>
+        <dt>Auto Start <span class="property-type">boolean</span></dt>
+        <dd>Start endpoints on this runtime when Node-RED starts.</dd>
+        <dt>CORS <span class="property-type">boolean</span></dt>
+        <dd>Add browser CORS headers to responses from this local listener.</dd>
+        <dt>Admin Port <span class="property-type">number</span></dt>
+        <dd>Local Node-RED Admin API port used by read-only admin tools.</dd>
+        <dt>Admin Token <span class="property-type">credential</span></dt>
+        <dd>Bearer token sent to the local Node-RED Admin API.</dd>
+        <dt>Admin Endpoint Path <span class="property-type">string</span></dt>
+        <dd>Exact MCP path allowed to expose read-only admin tools.</dd>
     </dl>
+    <p>Admin tools are exposed only when Admin Port, Admin Token, and Admin Endpoint Path are set, and an MCP Flow Server on this runtime uses exactly that path.</p>
 </script>
 
 <script type="text/html" data-help-name="mcp-flow-server">
-    <p>Runs an MCP endpoint on a local HTTP port and passes tool calls into Node-RED flows.</p>
+    <p>Defines one logical MCP endpoint on a selected local runtime and passes tool calls into Node-RED flows.</p>
     <h3>Configuration</h3>
     <dl class="message-properties">
-        <dt>Endpoint <span class="property-type">mcp-endpoint</span></dt>
-        <dd>Logical MCP endpoint containing the MCP name, path, base scopes, and admin-tool settings.</dd>
-        <dt>Port <span class="property-type">number</span></dt>
-        <dd>Local HTTP port. Multiple MCP Flow Server nodes may share one port when their endpoint paths differ.</dd>
-        <dt>Auto Start <span class="property-type">boolean</span></dt>
-        <dd>Start serving when Node-RED starts.</dd>
-        <dt>CORS <span class="property-type">boolean</span></dt>
-        <dd>Add browser CORS headers to responses from this local listener.</dd>
+        <dt>Runtime <span class="property-type">mcp-runtime</span></dt>
+        <dd>Local HTTP runtime that listens on a port and hosts this endpoint path.</dd>
+        <dt>MCP Name <span class="property-type">string</span></dt>
+        <dd>Name returned in MCP initialize responses and used for endpoint-scoped tool registration.</dd>
+        <dt>MCP Path <span class="property-type">string</span></dt>
+        <dd>HTTP JSON-RPC path served by this endpoint, for example <code>/internal/mcp/ops</code>.</dd>
+        <dt>Base Scopes <span class="property-type">string</span></dt>
+        <dd>Space- or comma-separated scopes advertised on tools exposed by this endpoint.</dd>
         <dt>Picker App <span class="property-type">boolean</span></dt>
         <dd>Expose picker resources and the internal <code>picker_submit</code> tool. This does not implement OAuth.</dd>
     </dl>

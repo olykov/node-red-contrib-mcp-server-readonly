@@ -24,7 +24,6 @@ module.exports = function (RED)
         node.toolName = config.toolName || '';
         node.toolDescription = config.toolDescription || '';
         node.endpoint = config.endpoint || '';
-        node.serverName = config.serverName || '';
         node.requiredScopes = parseList(config.requiredScopes || '');
         node.toolSchema = config.toolSchema || '{}';
         node.autoRegister = config.autoRegister !== false;
@@ -48,7 +47,7 @@ module.exports = function (RED)
             {
                 return { endpointId: node.endpoint, serverName: endpointName(RED, node.endpoint) || '' };
             }
-            return { endpointId: '', serverName: node.serverName || '' };
+            return { endpointId: '', serverName: '' };
         };
 
         node.registerTool = function ()
@@ -145,7 +144,6 @@ module.exports = function (RED)
                         if (msg.payload.toolName) node.toolName = msg.payload.toolName;
                         if (msg.payload.toolDescription) node.toolDescription = msg.payload.toolDescription;
                         if (Object.prototype.hasOwnProperty.call(msg.payload, 'endpoint')) node.endpoint = msg.payload.endpoint || '';
-                        if (Object.prototype.hasOwnProperty.call(msg.payload, 'serverName')) node.serverName = msg.payload.serverName || '';
                         if (Object.prototype.hasOwnProperty.call(msg.payload, 'requiredScopes')) node.requiredScopes = parseList(msg.payload.requiredScopes || '');
                         if (msg.payload.toolSchema)
                         {

@@ -71,25 +71,26 @@ describe('mcp-tool-registry', () => {
         assert.strictEqual(emitted[2].tool.serverName, '');
     });
 
-    it('re-registers an already registered tool after runtime update', () => {
+    it('re-registers an already registered tool after endpoint update', () => {
+        const endpoint = { id: 'endpoint-1', serverName: 'ops' };
         const { registry, emitted } = buildRegistry({
             toolName: 'read_status',
-            serverName: 'ops',
             toolSchema: '{"type":"object","properties":{}}'
-        });
+        }, { 'endpoint-1': endpoint });
 
         registry.registerTool();
         registry.emit('input', {
             topic: 'update',
             payload: {
-                serverName: 'metrics',
+                endpoint: 'endpoint-1',
                 requiredScopes: 'metrics:read'
             }
         });
 
         assert.deepStrictEqual(emitted.map(item => item.event), ['register', 'unregister', 'register']);
-        assert.strictEqual(emitted[1].tool.serverName, 'ops');
-        assert.strictEqual(emitted[2].tool.serverName, 'metrics');
+        assert.strictEqual(emitted[1].tool.endpointId, '');
+        assert.strictEqual(emitted[2].tool.endpointId, 'endpoint-1');
+        assert.strictEqual(emitted[2].tool.serverName, 'ops');
         assert.deepStrictEqual(emitted[2].tool.requiredScopes, ['metrics:read']);
     });
 });

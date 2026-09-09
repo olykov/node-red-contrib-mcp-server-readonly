@@ -15,6 +15,7 @@ function createRuntime(config = {}) {
             createNode(node, nodeConfig) {
                 Object.setPrototypeOf(node, EventEmitter.prototype);
                 EventEmitter.call(node);
+                node.id = nodeConfig && nodeConfig.id;
                 node.sent = [];
                 node.statuses = [];
                 node.logs = [];
@@ -32,9 +33,24 @@ function createRuntime(config = {}) {
     };
     delete require.cache[require.resolve('../mcp-flow-server')];
     require('../mcp-flow-server')(RED);
-    const nodeConfig = Object.assign({ serverName: 'test', serverPort: 18001 }, config);
+    const runtimeConfig = Object.assign({
+        id: 'runtime-1',
+        runtimeName: 'test-runtime',
+        serverPort: 18001,
+        autoStart: false,
+        enableCors: true
+    }, config.__runtime || {});
+    const runtimeNode = new types['mcp-runtime'](runtimeConfig);
+    nodeMap[runtimeConfig.id] = runtimeNode;
+    const nodeConfig = Object.assign({
+        id: 'endpoint-1',
+        runtime: runtimeConfig.id,
+        serverName: 'test',
+        serverPath: '/mcp/test',
+        enablePicker: true
+    }, config);
     const server = new types['mcp-flow-server'](nodeConfig);
-    return { RED, types, server, nodeMap };
+    return { RED, types, server, nodeMap, runtimeNode };
 }
 
 function buildServer(config = {}) {
@@ -75,57 +91,22 @@ describe('upstream mcp-flow-server local extensions', () => {
         assert.match(read.body.result.contents[0].text, /picker/i);
     });
 
-    it('loads legacy flow-server credentials without endpoint config', () => {
-        const { server } = buildServer({
-            serverName: 'legacy',
-            adminToolsEnabled: true,
-            adminPort: 1882,
-            credentials: { adminToken: 'legacy-token' }
-        });
+    it('requires an explicit runtime config node before starting', () => {
+        const runtime = createRuntime({ runtime: '', enablePicker: false });
 
-        assert.strictEqual(server.serverName, 'legacy');
-        assert.strictEqual(server.adminToolsEnabled, true);
-        assert.strictEqual(server.adminPort, 1882);
-        assert.strictEqual(server.adminToken, 'legacy-token');
+        assert.strictEqual(runtime.server.runtime, null);
+        assert.strictEqual(runtime.server.serverPort, 0);
+        assert.throws(() => runtime.server.initializeServer(), /MCP runtime is required/);
     });
 
-    it('loads endpoint config node credentials and admin settings', () => {
-        const runtime = createRuntime({ autoStart: false, enablePicker: false });
-        const endpoint = new runtime.types['mcp-endpoint']({
-            id: 'endpoint-credentials',
-            serverName: 'ops',
-            serverPath: '/mcp/ops',
-            advertisedScopes: 'openid',
-            adminToolsEnabled: true,
-            adminPort: 1881,
-            credentials: { adminToken: 'test-token' }
-        });
-        runtime.nodeMap['endpoint-credentials'] = endpoint;
-        const server = new runtime.types['mcp-flow-server']({
-            endpoint: 'endpoint-credentials',
-            serverPort: 18002,
-            autoStart: false,
-            enablePicker: false
-        });
-
-        assert.strictEqual(server.serverName, 'ops');
-        assert.strictEqual(server.serverPath, '/mcp/ops');
-        assert.strictEqual(server.adminToolsEnabled, true);
-        assert.strictEqual(server.adminPort, 1881);
-        assert.strictEqual(server.adminToken, 'test-token');
-    });
-
-    it('uses endpoint config for path, name, and base scopes', () => {
-        const endpoint = {
-            id: 'endpoint-1',
+    it('uses endpoint fields with runtime transport config', () => {
+        const { RED, server, runtimeNode } = buildServer({
             serverName: 'ops',
             serverPath: '/internal/mcp/ops',
-            advertisedScopes: ['openid', 'profile'],
-            adminToolsEnabled: false,
-            adminPort: 1880,
-            adminToken: ''
-        };
-        const { RED, server } = buildServer({ endpoint: 'endpoint-1', __nodes: { 'endpoint-1': endpoint }, enablePicker: false });
+            advertisedScopes: 'openid profile',
+            enablePicker: false,
+            __runtime: { serverPort: 18002, enableCors: false }
+        });
         RED.events.emit('mcp-tool-register', {
             name: 'read_status',
             description: 'Read status',
@@ -138,11 +119,14 @@ describe('upstream mcp-flow-server local extensions', () => {
         server.handleToolsList({ id: 1 }, res);
         assert.strictEqual(server.serverName, 'ops');
         assert.strictEqual(server.serverPath, '/internal/mcp/ops');
+        assert.strictEqual(server.serverPort, 18002);
+        assert.strictEqual(server.enableCors, false);
+        assert.strictEqual(runtimeNode.serverPort, 18002);
         assert.deepStrictEqual(res.body.result.tools[0]._meta.securitySchemes, [{ type: 'oauth2', scopes: ['openid', 'profile', 'status:read'] }]);
     });
 
-    it('filters registered tools by server name when a binding is configured', () => {
-        const { RED, server } = buildServer({ serverName: 'alpha', enablePicker: false });
+    it('filters registered tools by endpoint id when a binding is configured', () => {
+        const { RED, server } = buildServer({ id: 'alpha-endpoint', serverName: 'alpha', enablePicker: false });
         RED.events.emit('mcp-tool-register', {
             name: 'shared_tool',
             description: 'Shared',
@@ -151,13 +135,13 @@ describe('upstream mcp-flow-server local extensions', () => {
         RED.events.emit('mcp-tool-register', {
             name: 'alpha_tool',
             description: 'Alpha',
-            serverName: 'alpha',
+            endpointId: 'alpha-endpoint',
             inputSchema: { type: 'object', properties: {} }
         });
         RED.events.emit('mcp-tool-register', {
             name: 'beta_tool',
             description: 'Beta',
-            serverName: 'beta',
+            endpointId: 'beta-endpoint',
             inputSchema: { type: 'object', properties: {} }
         });
 
@@ -168,25 +152,122 @@ describe('upstream mcp-flow-server local extensions', () => {
     });
 
     it('uses configured MCP server path', async () => {
-        const { server } = buildServer({ serverPath: '/custom/mcp', autoStart: false });
+        const { server } = buildServer({ serverPath: '/custom/mcp' });
         server.initializeServer();
         assert.strictEqual(server.serverPath, '/custom/mcp');
         assert.ok(server.portState.routes.has('/custom/mcp'));
     });
 
+    it('allows multiple endpoints on one runtime port', () => {
+        const runtime = createRuntime({
+            id: 'endpoint-a',
+            serverPath: '/mcp/a',
+            __runtime: { id: 'runtime-shared', serverPort: 18005 }
+        });
+        const serverB = new runtime.types['mcp-flow-server']({
+            id: 'endpoint-b',
+            runtime: 'runtime-shared',
+            serverName: 'b',
+            serverPath: '/mcp/b',
+            enablePicker: false
+        });
 
-    it('keeps same tool name isolated across server bindings', () => {
-        const { RED, server } = buildServer({ serverName: 'alpha', enablePicker: false });
+        runtime.server.initializeServer();
+        serverB.initializeServer();
+
+        assert.strictEqual(runtime.server.portState, serverB.portState);
+        assert.ok(runtime.server.portState.routes.has('/mcp/a'));
+        assert.ok(runtime.server.portState.routes.has('/mcp/b'));
+    });
+
+    it('rejects different runtimes on the same port', () => {
+        const runtime = createRuntime({
+            id: 'endpoint-a',
+            serverPath: '/mcp/a',
+            __runtime: { id: 'runtime-a', serverPort: 18006 }
+        });
+        const runtimeB = new runtime.types['mcp-runtime']({
+            id: 'runtime-b',
+            runtimeName: 'runtime-b',
+            serverPort: 18006,
+            autoStart: false,
+            enableCors: true
+        });
+        runtime.nodeMap['runtime-b'] = runtimeB;
+        const serverB = new runtime.types['mcp-flow-server']({
+            id: 'endpoint-b',
+            runtime: 'runtime-b',
+            serverName: 'b',
+            serverPath: '/mcp/b',
+            enablePicker: false
+        });
+
+        runtime.server.initializeServer();
+
+        assert.throws(() => serverB.initializeServer(), /port already registered by another runtime/);
+    });
+
+    it('exposes admin tools only on the runtime admin endpoint path', () => {
+        const adminRuntime = {
+            serverPort: 18003,
+            adminPort: 1881,
+            adminEndpointPath: '/internal/mcp/ops',
+            credentials: { adminToken: 'test-token' }
+        };
+        const adminServer = buildServer({
+            id: 'admin-endpoint',
+            serverName: 'ops',
+            serverPath: '/internal/mcp/ops',
+            enablePicker: false,
+            __runtime: adminRuntime
+        }).server;
+        const otherServer = buildServer({
+            id: 'other-endpoint',
+            serverName: 'other',
+            serverPath: '/internal/mcp/other',
+            enablePicker: false,
+            __runtime: Object.assign({ id: 'runtime-2' }, adminRuntime)
+        }).server;
+
+        const adminRes = mockRes();
+        adminServer.handleToolsList({ id: 1 }, adminRes);
+        const otherRes = mockRes();
+        otherServer.handleToolsList({ id: 2 }, otherRes);
+
+        assert.ok(adminRes.body.result.tools.some(tool => tool.name === 'get_flow'));
+        assert.ok(!otherRes.body.result.tools.some(tool => tool.name === 'get_flow'));
+    });
+
+    it('does not expose admin tools without complete runtime admin config', () => {
+        const { server } = buildServer({
+            serverName: 'ops',
+            serverPath: '/internal/mcp/ops',
+            enablePicker: false,
+            __runtime: {
+                serverPort: 18004,
+                adminPort: 1881,
+                adminEndpointPath: '/internal/mcp/ops',
+                credentials: { adminToken: '' }
+            }
+        });
+        const res = mockRes();
+        server.handleToolsList({ id: 1 }, res);
+        assert.ok(!res.body.result.tools.some(tool => tool.name === 'get_flow'));
+    });
+
+
+    it('keeps same tool name isolated across endpoint bindings', () => {
+        const { RED, server } = buildServer({ id: 'alpha-endpoint', serverName: 'alpha', enablePicker: false });
         RED.events.emit('mcp-tool-register', {
             name: 'status_tool',
             description: 'Alpha status',
-            serverName: 'alpha',
+            endpointId: 'alpha-endpoint',
             inputSchema: { type: 'object', properties: { alpha: { type: 'boolean' } } }
         });
         RED.events.emit('mcp-tool-register', {
             name: 'status_tool',
             description: 'Beta status',
-            serverName: 'beta',
+            endpointId: 'beta-endpoint',
             inputSchema: { type: 'object', properties: { beta: { type: 'boolean' } } }
         });
 

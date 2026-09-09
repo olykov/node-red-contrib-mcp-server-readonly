@@ -6,8 +6,7 @@
             name: { value: '' },
             toolName: { value: '', required: true },
             toolDescription: { value: '' },
-            endpoint: { value: '', type: 'mcp-endpoint', required: false },
-            serverName: { value: '' },
+            endpoint: { value: '', type: 'mcp-flow-server', required: false },
             requiredScopes: { value: '' },
             toolSchema: { value: '{\n  "type": "object",\n  "properties": {},\n  "required": []\n}' },
             autoRegister: { value: true }
@@ -212,7 +211,7 @@
     <dl class="message-properties">
         <dt>Tool Name <span class="property-type">string</span></dt>
         <dd>MCP tool name. Use lowercase letters, numbers, and underscores.</dd>
-        <dt>Endpoint <span class="property-type">mcp-endpoint</span></dt>
+        <dt>Endpoint <span class="property-type">mcp-flow-server</span></dt>
         <dd>Optional endpoint binding. Empty makes the tool shared across all endpoints.</dd>
         <dt>Required Scopes <span class="property-type">string</span></dt>
         <dd>Scopes added to this tool descriptor in addition to endpoint base scopes.</dd>

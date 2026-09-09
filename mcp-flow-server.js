@@ -48,45 +48,33 @@ module.exports = function (RED)
         return raw.startsWith('/') ? raw : '/' + raw;
     }
 
-    function endpointFromConfig(RED, config, node)
+    function runtimeFromConfig(RED, config)
     {
         const getNode = RED.nodes && typeof RED.nodes.getNode === 'function' ? RED.nodes.getNode.bind(RED.nodes) : null;
-        const endpointNode = config.endpoint && getNode ? getNode(config.endpoint) : null;
-        if (endpointNode)
-        {
-            return {
-                id: endpointNode.id,
-                name: endpointNode.serverName,
-                path: endpointNode.serverPath,
-                advertisedScopes: endpointNode.advertisedScopes,
-                adminToolsEnabled: endpointNode.adminToolsEnabled,
-                adminPort: endpointNode.adminPort,
-                adminToken: endpointNode.adminToken
-            };
-        }
+        return config.runtime && getNode ? getNode(config.runtime) : null;
+    }
 
-        return {
-            id: '',
-            name: config.serverName || 'node-red-mcp-server',
-            path: normalizePath(config.serverPath),
-            advertisedScopes: parseList(config.advertisedScopes || ''),
-            adminToolsEnabled: config.adminToolsEnabled === true || config.adminToolsEnabled === 'true',
-            adminPort: Number(config.adminPort || 1880),
-            adminToken: (node.credentials && node.credentials.adminToken) || config.adminToken || ''
-        };
+    function hasAdminTools(runtime, serverPath)
+    {
+        return Boolean(
+            runtime &&
+            runtime.adminPort &&
+            runtime.adminToken &&
+            runtime.adminEndpointPath &&
+            normalizePath(runtime.adminEndpointPath) === serverPath
+        );
     }
 
     function toolBelongsToEndpoint(tool, node)
     {
         if (!tool) return false;
         if (tool.endpointId) return tool.endpointId === node.endpointId;
-        if (tool.serverName) return tool.serverName === node.serverName;
         return true;
     }
 
-    function registryKey(toolName, endpointId, serverName)
+    function registryKey(toolName, endpointId)
     {
-        return (endpointId || serverName || '*') + ':' + toolName;
+        return (endpointId || '*') + ':' + toolName;
     }
 
     function getPortServer(port)
@@ -100,6 +88,7 @@ module.exports = function (RED)
             httpServer: null,
             routes: new Map(),
             nodes: new Set(),
+            runtimeId: '',
             isListening: false,
             enableCors: false
         };
@@ -234,36 +223,39 @@ module.exports = function (RED)
         return textResult(JSON.stringify(result));
     }
 
-    function MCPEndpointNode(config)
+    function MCPRuntimeNode(config)
     {
         RED.nodes.createNode(this, config);
         const node = this;
         node.name = config.name || '';
-        node.serverName = config.serverName || node.name || 'node-red-mcp-server';
-        node.serverPath = normalizePath(config.serverPath);
-        node.advertisedScopes = parseList(config.advertisedScopes || '');
-        node.adminToolsEnabled = config.adminToolsEnabled === true || config.adminToolsEnabled === 'true';
+        node.runtimeName = config.runtimeName || node.name || 'mcp-runtime';
+        node.serverPort = Number(config.serverPort || 8001);
+        node.autoStart = config.autoStart || false;
+        node.enableCors = config.enableCors !== false;
         node.adminPort = Number(config.adminPort || 1880);
-        node.adminToken = (node.credentials && node.credentials.adminToken) || config.adminToken || '';
+        node.adminToken = (node.credentials && node.credentials.adminToken) || '';
+        node.adminEndpointPath = config.adminEndpointPath ? normalizePath(config.adminEndpointPath) : '';
     }
 
     function MCPFlowServerNode(config)
     {
         RED.nodes.createNode(this, config);
         const node = this;
-        const endpoint = endpointFromConfig(RED, config, node);
+        const runtime = runtimeFromConfig(RED, config);
 
-        node.endpointId = endpoint.id;
-        node.serverName = endpoint.name;
-        node.serverPath = endpoint.path;
-        node.serverPort = config.serverPort || 8001;
-        node.autoStart = config.autoStart || false;
-        node.enableCors = config.enableCors !== false;
-        node.advertisedScopes = endpoint.advertisedScopes;
+        node.runtimeId = config.runtime || '';
+        node.runtime = runtime;
+        node.endpointId = node.id;
+        node.serverName = config.serverName || config.name || 'node-red-mcp-server';
+        node.serverPath = normalizePath(config.serverPath);
+        node.serverPort = runtime ? runtime.serverPort : 0;
+        node.autoStart = runtime ? runtime.autoStart : false;
+        node.enableCors = runtime ? runtime.enableCors : false;
+        node.advertisedScopes = parseList(config.advertisedScopes || '');
         node.enablePicker = config.enablePicker !== false;
-        node.adminToolsEnabled = endpoint.adminToolsEnabled;
-        node.adminPort = endpoint.adminPort;
-        node.adminToken = endpoint.adminToken;
+        node.adminToolsEnabled = hasAdminTools(runtime, node.serverPath);
+        node.adminPort = runtime ? runtime.adminPort : 0;
+        node.adminToken = runtime ? runtime.adminToken : '';
         node.adminTools = createAdminTools({ adminPort: node.adminPort, getAdminToken: () => node.adminToken });
 
         node.httpServer = null;
@@ -275,9 +267,18 @@ module.exports = function (RED)
 
         node.initializeServer = function ()
         {
+            if (!node.runtime)
+            {
+                throw new Error('MCP runtime is required');
+            }
             const portState = getPortServer(node.serverPort);
+            if (portState.runtimeId && portState.runtimeId !== node.runtimeId)
+            {
+                throw new Error('MCP runtime port already registered by another runtime: ' + node.serverPort);
+            }
             const existingRoute = portState.routes.get(node.serverPath);
             if (existingRoute && existingRoute !== node) throw new Error('MCP server path already registered on this port: ' + node.serverPath);
+            portState.runtimeId = node.runtimeId;
             portState.enableCors = portState.enableCors || node.enableCors;
             portState.routes.set(node.serverPath, node);
             portState.nodes.add(node);
@@ -339,8 +340,8 @@ module.exports = function (RED)
                 .map(key => toolRegistry.get(key))
                 .filter(tool => toolBelongsToEndpoint(tool, node));
             const byName = new Map();
-            tools.filter(tool => !tool.endpointId && !tool.serverName).forEach(tool => byName.set(tool.name, tool));
-            tools.filter(tool => toolBelongsToEndpoint(tool, node) && (tool.endpointId || tool.serverName)).forEach(tool => byName.set(tool.name, tool));
+            tools.filter(tool => !tool.endpointId).forEach(tool => byName.set(tool.name, tool));
+            tools.filter(tool => tool.endpointId).forEach(tool => byName.set(tool.name, tool));
             return Array.from(byName.values());
         };
 
@@ -501,6 +502,7 @@ module.exports = function (RED)
                     node.status({ fill: 'green', shape: 'dot', text: 'running :' + node.serverPort + node.serverPath });
                     serverInstances.set(node.serverId, {
                         nodeId: String(node.id),
+                        runtimeId: String(node.runtimeId || ''),
                         endpointId: String(node.endpointId || ''),
                         serverName: String(node.serverName),
                         path: String(node.serverPath),
@@ -586,7 +588,7 @@ module.exports = function (RED)
                 case 'stop': node.stopServer(); break;
                 case 'restart': node.stopServer(() => setTimeout(() => node.startServer(), 1000)); break;
                 case 'status':
-                    msg.payload = { serverId: node.serverId, endpointId: node.endpointId, serverName: node.serverName, path: node.serverPath, isRunning: node.isRunning, port: node.serverPort, toolCount: node.registeredTools().length };
+                    msg.payload = { serverId: node.serverId, runtimeId: node.runtimeId, endpointId: node.endpointId, serverName: node.serverName, path: node.serverPath, isRunning: node.isRunning, port: node.serverPort, toolCount: node.registeredTools().length };
                     node.send(msg);
                     break;
             }
@@ -601,23 +603,23 @@ module.exports = function (RED)
         });
     }
 
-    RED.nodes.registerType('mcp-endpoint', MCPEndpointNode);
+    RED.nodes.registerType('mcp-runtime', MCPRuntimeNode);
     RED.nodes.registerType('mcp-flow-server', MCPFlowServerNode);
 
     RED.events.on('mcp-tool-register', (toolDef) =>
     {
         if (!toolDef || !toolDef.name) return;
-        toolRegistry.set(registryKey(toolDef.name, toolDef.endpointId, toolDef.serverName), toolDef);
+        toolRegistry.set(registryKey(toolDef.name, toolDef.endpointId), toolDef);
     });
     RED.events.on('mcp-tool-unregister', (toolDef) =>
     {
         if (typeof toolDef === 'string')
         {
-            toolRegistry.del(registryKey(toolDef, '', ''));
+            toolRegistry.del(registryKey(toolDef, ''));
             return;
         }
         if (!toolDef || !toolDef.name) return;
-        toolRegistry.del(registryKey(toolDef.name, toolDef.endpointId, toolDef.serverName));
+        toolRegistry.del(registryKey(toolDef.name, toolDef.endpointId));
     });
 
     RED.httpAdmin.get('/mcp-flow-servers', function (req, res)
@@ -631,7 +633,7 @@ module.exports = function (RED)
                 const toolCount = toolRegistry.keys()
                     .map(toolKey => toolRegistry.get(toolKey))
                     .filter(tool => toolBelongsToEndpoint(tool, server)).length;
-                servers.push({ serverId: key, endpointId: server.endpointId, serverName: server.serverName, path: server.path, isRunning: server.isRunning, port: server.port, startTime: server.startTime, toolCount });
+                servers.push({ serverId: key, runtimeId: server.runtimeId, endpointId: server.endpointId, serverName: server.serverName, path: server.path, isRunning: server.isRunning, port: server.port, startTime: server.startTime, toolCount });
             }
         });
         res.json({ servers });
