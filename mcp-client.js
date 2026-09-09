@@ -5,7 +5,7 @@ module.exports = function (RED)
     const axios = require('axios');
     const EventSource = require('eventsource');
     const WebSocket = require('ws');
-    const { v4: uuidv4 } = require('uuid');
+    const { randomUUID: uuidv4 } = require('crypto');
 
     function MCPClientNode(config)
     {

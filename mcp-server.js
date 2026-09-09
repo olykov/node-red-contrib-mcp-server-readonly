@@ -3,7 +3,7 @@ module.exports = function (RED)
     "use strict";
 
     const { spawn, exec } = require('child_process');
-    const { v4: uuidv4 } = require('uuid');
+    const { randomUUID: uuidv4 } = require('crypto');
     const NodeCache = require('node-cache');
     const axios = require('axios');
     const EventSource = require('eventsource');

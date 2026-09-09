@@ -4,7 +4,7 @@ module.exports = function (RED)
 
     const http = require('http');
     const express = require('express');
-    const { v4: uuidv4 } = require('uuid');
+    const { randomUUID: uuidv4 } = require('crypto');
     const NodeCache = require('node-cache');
     const { createAdminTools } = require('./lib/admin-tools');
     const { MCP_APP_RESOURCES, PICKER_URI } = require('./lib/mcp-app-resources');
