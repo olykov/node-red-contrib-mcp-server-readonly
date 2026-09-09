@@ -1,0 +1,358 @@
+<!-- MCP Tool Registry Node -->
+<script type="text/javascript">
+    RED.nodes.registerType('mcp-tool-registry', {
+        category: 'mcp',
+        color: '#E91E63',
+        defaults: {
+            name: {value: ""},
+            toolName: {value: "", required: true},
+            toolDescription: {value: ""},
+            toolSchema: {value: '{\n  "type": "object",\n  "properties": {},\n  "required": []\n}'},
+            autoRegister: {value: true}
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-plus",
+        label: function() {
+            return this.name || this.toolName || "Tool Registry";
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            var node = this;
+
+            // Common tool schema templates
+            var schemaTemplates = {
+                "simple": {
+                    name: "Simple Parameters",
+                    schema: '{\n  "type": "object",\n  "properties": {\n    "input": {\n      "type": "string",\n      "description": "Input parameter"\n    }\n  },\n  "required": ["input"]\n}'
+                },
+                "todo": {
+                    name: "Todo Tool",
+                    schema: '{\n  "type": "object",\n  "properties": {\n    "description": {\n      "type": "string",\n      "description": "Todo description"\n    },\n    "project": {\n      "type": "string",\n      "description": "Project name"\n    },\n    "priority": {\n      "type": "string",\n      "enum": ["Low", "Medium", "High"],\n      "description": "Priority level"\n    }\n  },\n  "required": ["description"]\n}'
+                },
+                "calculator": {
+                    name: "Calculator Tool",
+                    schema: '{\n  "type": "object",\n  "properties": {\n    "operation": {\n      "type": "string",\n      "enum": ["add", "subtract", "multiply", "divide"],\n      "description": "Mathematical operation"\n    },\n    "a": {\n      "type": "number",\n      "description": "First number"\n    },\n    "b": {\n      "type": "number",\n      "description": "Second number"\n    }\n  },\n  "required": ["operation", "a", "b"]\n}'
+                },
+                "api": {
+                    name: "API Call Tool",
+                    schema: '{\n  "type": "object",\n  "properties": {\n    "url": {\n      "type": "string",\n      "description": "API endpoint URL"\n    },\n    "method": {\n      "type": "string",\n      "enum": ["GET", "POST", "PUT", "DELETE"],\n      "description": "HTTP method"\n    },\n    "data": {\n      "type": "object",\n      "description": "Request payload"\n    }\n  },\n  "required": ["url"]\n}'
+                }
+            };
+
+            // Populate schema templates dropdown
+            var templateSelect = $("#schema-templates");
+            Object.keys(schemaTemplates).forEach(function(key) {
+                var template = schemaTemplates[key];
+                var option = $('<option></option>')
+                    .attr('value', key)
+                    .text(template.name);
+                templateSelect.append(option);
+            });
+
+            // Load schema template
+            $("#load-template-btn").click(function() {
+                var selectedTemplate = $("#schema-templates").val();
+                if (selectedTemplate && schemaTemplates[selectedTemplate]) {
+                    $("#node-input-toolSchema").val(schemaTemplates[selectedTemplate].schema);
+                    RED.notify(`Loaded ${schemaTemplates[selectedTemplate].name} template`, "success");
+                }
+            });
+
+            // Auto-generate tool name from display name
+            $("#node-input-name").on('input', function() {
+                var name = $(this).val();
+                if (name && !$("#node-input-toolName").val()) {
+                    var toolName = name.toLowerCase()
+                        .replace(/[^a-z0-9\s]/g, '')
+                        .replace(/\s+/g, '_') + '_tool';
+                    $("#node-input-toolName").val(toolName);
+                }
+            });
+
+            // Validate JSON schema
+            $("#node-input-toolSchema").on('blur', function() {
+                var schema = $(this).val();
+                try {
+                    var parsed = JSON.parse(schema);
+                    $(this).removeClass("input-error");
+                    $("#schema-validation").hide();
+                    
+                    // Basic schema validation
+                    if (!parsed.type || !parsed.properties) {
+                        $("#schema-validation").show()
+                            .css('color', '#f39c12')
+                            .text("Warning: Schema should have 'type' and 'properties' fields");
+                    }
+                } catch (error) {
+                    $(this).addClass("input-error");
+                    $("#schema-validation").show()
+                        .css('color', '#e74c3c')
+                        .text("Invalid JSON: " + error.message);
+                }
+            });
+
+            // Format JSON button
+            $("#format-schema-btn").click(function() {
+                var schema = $("#node-input-toolSchema").val();
+                try {
+                    var parsed = JSON.parse(schema);
+                    var formatted = JSON.stringify(parsed, null, 2);
+                    $("#node-input-toolSchema").val(formatted);
+                    RED.notify("Schema formatted", "success");
+                } catch (error) {
+                    RED.notify("Invalid JSON: " + error.message, "error");
+                }
+            });
+
+            // Generate example tools
+            $("#generate-todo-tool-btn").click(function() {
+                $("#node-input-name").val("Add Todo");
+                $("#node-input-toolName").val("add_todo_tool");
+                $("#node-input-toolDescription").val("Create a new todo item with description and project");
+                $("#node-input-toolSchema").val(schemaTemplates.todo.schema);
+                RED.notify("Todo tool template created", "success");
+            });
+
+            $("#generate-calc-tool-btn").click(function() {
+                $("#node-input-name").val("Calculator");
+                $("#node-input-toolName").val("calculate_tool");
+                $("#node-input-toolDescription").val("Perform mathematical calculations");
+                $("#node-input-toolSchema").val(schemaTemplates.calculator.schema);
+                RED.notify("Calculator tool template created", "success");
+            });
+
+            // Tool name validation
+            $("#node-input-toolName").on('input', function() {
+                var toolName = $(this).val();
+                var isValid = /^[a-z][a-z0-9_]*_tool$/.test(toolName);
+                
+                if (toolName && !isValid) {
+                    $(this).addClass("input-error");
+                    $("#tool-name-validation").show().text("Tool name should be lowercase, underscore-separated, and end with '_tool'");
+                } else {
+                    $(this).removeClass("input-error");
+                    $("#tool-name-validation").hide();
+                }
+            });
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="mcp-tool-registry">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Display Name</label>
+        <input type="text" id="node-input-name" placeholder="Human-readable tool name">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-toolName"><i class="fa fa-cog"></i> Tool Name</label>
+        <input type="text" id="node-input-toolName" placeholder="my_custom_tool">
+        <div id="tool-name-validation" style="display: none; margin-top: 5px; font-size: 12px; color: #e74c3c;"></div>
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+            Unique tool identifier (lowercase, underscore-separated, ending with '_tool')
+        </div>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-toolDescription"><i class="fa fa-info-circle"></i> Description</label>
+        <textarea id="node-input-toolDescription" rows="2" placeholder="Describe what this tool does..."></textarea>
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+            Description shown to AI agents when listing available tools
+        </div>
+    </div>
+
+    <hr>
+    <h4>Parameter Schema</h4>
+
+    <div class="form-row">
+        <label for="schema-templates"><i class="fa fa-magic"></i> Schema Templates</label>
+        <select id="schema-templates">
+            <option value="">Select a template...</option>
+        </select>
+        <button type="button" id="load-template-btn" class="btn btn-secondary" style="margin-top: 5px;">
+            <i class="fa fa-download"></i> Load Template
+        </button>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-toolSchema"><i class="fa fa-code"></i> JSON Schema</label>
+        <textarea id="node-input-toolSchema" rows="8" placeholder='{"type": "object", "properties": {}, "required": []}'></textarea>
+        <div id="schema-validation" style="display: none; margin-top: 5px; font-size: 12px;"></div>
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+            JSON Schema defining the tool's input parameters
+        </div>
+        <button type="button" id="format-schema-btn" class="btn btn-secondary" style="margin-top: 5px;">
+            <i class="fa fa-magic"></i> Format JSON
+        </button>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-autoRegister"><i class="fa fa-play"></i> Auto Register</label>
+        <input type="checkbox" id="node-input-autoRegister" style="width: auto;">
+        <span style="margin-left: 10px; font-size: 12px; color: #666;">Automatically register tool when Node-RED starts</span>
+    </div>
+
+    <!-- Quick Tool Generation -->
+    <hr>
+    <h4>Quick Tool Generation</h4>
+    
+    <div class="form-row">
+        <label></label>
+        <button type="button" id="generate-todo-tool-btn" class="btn btn-primary" style="margin-right: 10px;">
+            <i class="fa fa-check-square-o"></i> Generate Todo Tool
+        </button>
+        <button type="button" id="generate-calc-tool-btn" class="btn btn-primary">
+            <i class="fa fa-calculator"></i> Generate Calculator Tool
+        </button>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="mcp-tool-registry">
+    <p>A Node-RED node that defines and registers Model Context Protocol (MCP) tools for use with MCP Flow Servers. This allows you to create custom AI agent tools using visual flows.</p>
+    
+    <h3>Configuration</h3>
+    <dl class="message-properties">
+        <dt>Display Name <span class="property-type">string</span></dt>
+        <dd>Human-readable name for the tool (used for Node-RED display)</dd>
+        
+        <dt>Tool Name <span class="property-type">string</span></dt>
+        <dd>Unique identifier for the tool (must end with '_tool')</dd>
+        
+        <dt>Description <span class="property-type">string</span></dt>
+        <dd>Description shown to AI agents when listing available tools</dd>
+        
+        <dt>JSON Schema <span class="property-type">JSON</span></dt>
+        <dd>JSON Schema defining the tool's input parameters</dd>
+        
+        <dt>Auto Register <span class="property-type">boolean</span></dt>
+        <dd>Whether to automatically register the tool on startup</dd>
+    </dl>
+
+    <h3>How It Works</h3>
+    <p>This node defines the interface for an MCP tool:</p>
+    <ol>
+        <li><strong>Tool Definition:</strong> Defines tool name, description, and parameter schema</li>
+        <li><strong>Registration:</strong> Registers the tool with any running MCP Flow Servers</li>
+        <li><strong>Discoverability:</strong> Makes the tool available to AI agents via tools/list</li>
+        <li><strong>Execution:</strong> Works with MCP Tool Handler nodes to process requests</li>
+    </ol>
+
+    <h3>Tool Naming Convention</h3>
+    <p>Tool names should follow these rules:</p>
+    <ul>
+        <li>Lowercase letters, numbers, and underscores only</li>
+        <li>Must end with '_tool' (e.g., 'add_todo_tool')</li>
+        <li>Should be descriptive and unique</li>
+        <li>Examples: 'calculate_sum_tool', 'send_email_tool', 'get_weather_tool'</li>
+    </ul>
+
+    <h3>JSON Schema Format</h3>
+    <p>The schema defines the parameters your tool accepts:</p>
+    <pre><code>{
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Message to process"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Priority level"
+    }
+  },
+  "required": ["message"]
+}</code></pre>
+
+    <h3>Input Commands</h3>
+    <p>Send messages with the following topics to control registration:</p>
+    <dl class="message-properties">
+        <dt>register <span class="property-type">string</span></dt>
+        <dd>Register the tool with flow servers</dd>
+        
+        <dt>unregister <span class="property-type">string</span></dt>
+        <dd>Unregister the tool from flow servers</dd>
+        
+        <dt>update <span class="property-type">object</span></dt>
+        <dd>Update tool definition and re-register</dd>
+        
+        <dt>status <span class="property-type">string</span></dt>
+        <dd>Get current registration status</dd>
+    </dl>
+
+    <h3>Output Messages</h3>
+    <p>The node outputs messages for registration events:</p>
+    <dl class="message-properties">
+        <dt>tool-registered <span class="property-type">object</span></dt>
+        <dd>Tool successfully registered with details</dd>
+        
+        <dt>tool-unregistered <span class="property-type">object</span></dt>
+        <dd>Tool unregistered event</dd>
+    </dl>
+
+    <h3>Schema Templates</h3>
+    <p>Use the built-in templates for common tool types:</p>
+    <ul>
+        <li><strong>Simple Parameters:</strong> Basic string input</li>
+        <li><strong>Todo Tool:</strong> Task creation with description and project</li>
+        <li><strong>Calculator Tool:</strong> Mathematical operations</li>
+        <li><strong>API Call Tool:</strong> HTTP request parameters</li>
+    </ul>
+
+    <h3>Example Usage</h3>
+    <p><strong>Creating a Weather Tool:</strong></p>
+    <pre><code>Tool Name: get_weather_tool
+Description: Get current weather for a location
+Schema:
+{
+  "type": "object",
+  "properties": {
+    "location": {
+      "type": "string",
+      "description": "City name or coordinates"
+    },
+    "units": {
+      "type": "string",
+      "enum": ["celsius", "fahrenheit"],
+      "description": "Temperature units"
+    }
+  },
+  "required": ["location"]
+}</code></pre>
+
+    <h3>Integration Flow</h3>
+    <p>Complete tool creation workflow:</p>
+    <pre><code>
+[MCP Tool Registry] → defines the tool interface
+        ↓
+[MCP Flow Server] → serves the tool to clients
+        ↓
+[MCP Tool Handler] → receives execution requests
+        ↓
+[Your Business Logic] → processes the request
+        ↓
+[Response] → returns result to client
+</code></pre>
+
+    <h3>Quick Tool Generation</h3>
+    <p>Use the generation buttons to create common tool types instantly:</p>
+    <ul>
+        <li><strong>Todo Tool:</strong> Creates task management tool template</li>
+        <li><strong>Calculator Tool:</strong> Creates mathematical calculation tool</li>
+    </ul>
+
+    <h3>Best Practices</h3>
+    <ul>
+        <li>Use descriptive tool names and descriptions</li>
+        <li>Define clear parameter schemas with proper types</li>
+        <li>Include helpful descriptions for each parameter</li>
+        <li>Mark required parameters appropriately</li>
+        <li>Test tool registration before connecting handlers</li>
+    </ul>
+
+    <h3>Requirements</h3>
+    <p>This node works with MCP Flow Server nodes to serve the defined tools. The tool registration is global across all flow servers in the Node-RED instance.</p>
+</script> 

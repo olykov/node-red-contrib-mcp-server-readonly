@@ -1,0 +1,355 @@
+<!-- MCP Flow Server Node -->
+<script type="text/javascript">
+    RED.nodes.registerType('mcp-flow-server', {
+        category: 'mcp',
+        color: '#9C27B0',
+        defaults: {
+            name: {value: ""},
+            serverName: {value: "node-red-mcp-server", required: true},
+            serverPort: {value: 8001, required: true, validate: function(v) { return v > 0 && v < 65536; }},
+            autoStart: {value: false},
+            enableCors: {value: true},
+            advertisedScopes: {value: ""},
+            enablePicker: {value: true},
+            adminToolsEnabled: {value: false},
+            adminPort: {value: 1880, validate: function(v) { return v > 0 && v < 65536; }},
+            adminToken: {value: ""}
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-cogs",
+        label: function() {
+            return this.name || `Flow Server :${this.serverPort}`;
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            var node = this;
+
+            // Load available flow servers
+            function loadFlowServers() {
+                $.ajax({
+                    url: "mcp-flow-servers",
+                    method: "GET",
+                    timeout: 5000
+                })
+                .done(function(data) {
+                    var statusDiv = $("#flow-servers-status");
+                    if (data.servers && data.servers.length > 0) {
+                        var html = "<h5>Running Flow Servers:</h5><ul>";
+                        data.servers.forEach(function(server) {
+                            var status = server.isRunning ? "🟢" : "🔴";
+                            html += `<li>${status} ${server.serverName} (port ${server.port}) - ${server.toolCount} tools</li>`;
+                        });
+                        html += "</ul>";
+                        statusDiv.html(html);
+                    } else {
+                        statusDiv.html("<p>No flow servers currently running</p>");
+                    }
+                })
+                .fail(function() {
+                    $("#flow-servers-status").html("<p>Failed to load flow server status</p>");
+                });
+            }
+
+            // Test server port
+            $("#test-port-btn").click(function() {
+                var button = $(this);
+                var originalText = button.text();
+                var port = $("#node-input-serverPort").val();
+                
+                if (!port) {
+                    RED.notify("Port is required", "error");
+                    return;
+                }
+
+                button.text("Testing...").prop('disabled', true);
+                
+                // Simple port availability test
+                $.ajax({
+                    url: `http://localhost:${port}/health`,
+                    method: "GET",
+                    timeout: 3000
+                })
+                .done(function() {
+                    button.text(originalText).prop('disabled', false);
+                    RED.notify("Port is already in use!", "warning");
+                })
+                .fail(function(xhr) {
+                    button.text(originalText).prop('disabled', false);
+                    if (xhr.status === 0) {
+                        RED.notify("Port appears to be available", "success");
+                    } else {
+                        RED.notify("Port is already in use!", "warning");
+                    }
+                });
+            });
+
+            // Load Todo MCP preset
+            $("#load-todo-preset-btn").click(function() {
+                $("#node-input-serverName").val("todo-mcp-server");
+                $("#node-input-serverPort").val(8001);
+                $("#node-input-autoStart").prop('checked', true);
+                $("#node-input-enableCors").prop('checked', true);
+                RED.notify("Todo MCP Server preset loaded", "success");
+            });
+
+            // Refresh flow servers status
+            $("#refresh-status-btn").click(loadFlowServers);
+
+            // Load status on init
+            setTimeout(loadFlowServers, 500);
+
+            // Port validation
+            $("#node-input-serverPort").on('input', function() {
+                var port = parseInt($(this).val());
+                var isValid = port > 0 && port < 65536;
+                
+                if (port && !isValid) {
+                    $(this).addClass("input-error");
+                    $("#port-validation").show().text("Port must be between 1 and 65535");
+                } else {
+                    $(this).removeClass("input-error");
+                    $("#port-validation").hide();
+                }
+            });
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="mcp-flow-server">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Optional display name">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-serverName"><i class="fa fa-server"></i> Server Name</label>
+        <input type="text" id="node-input-serverName" placeholder="node-red-mcp-server">
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+            Name identifier for this MCP server instance
+        </div>
+    </div>
+
+    <hr>
+    <h4>Server Configuration</h4>
+
+    <div class="form-row">
+        <label for="node-input-serverPort"><i class="fa fa-plug"></i> Server Port</label>
+        <input type="number" id="node-input-serverPort" min="1" max="65535" placeholder="8001">
+        <div id="port-validation" style="display: none; margin-top: 5px; font-size: 12px; color: #e74c3c;"></div>
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+            HTTP port for the MCP server (different from external MCP servers)
+        </div>
+        <button type="button" id="test-port-btn" class="btn btn-secondary" style="margin-top: 5px;">
+            <i class="fa fa-check"></i> Test Port Availability
+        </button>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
+        <input type="checkbox" id="node-input-autoStart" style="width: auto;">
+        <span style="margin-left: 10px; font-size: 12px; color: #666;">Automatically start server when Node-RED starts</span>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-enableCors"><i class="fa fa-globe"></i> Enable CORS</label>
+        <input type="checkbox" id="node-input-enableCors" style="width: auto;">
+        <span style="margin-left: 10px; font-size: 12px; color: #666;">Enable Cross-Origin Resource Sharing for web clients</span>
+    </div>
+
+    <hr>
+    <h4>Local Extensions</h4>
+
+    <div class="form-row">
+        <label for="node-input-advertisedScopes"><i class="fa fa-lock"></i> OAuth Scopes</label>
+        <input type="text" id="node-input-advertisedScopes" placeholder="openid profile email">
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+            Space- or comma-separated scopes advertised in <code>_meta.securitySchemes</code>. Public OAuth/CIMD stays outside Node-RED.
+        </div>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-enablePicker"><i class="fa fa-list"></i> Picker App</label>
+        <input type="checkbox" id="node-input-enablePicker" style="width: auto;">
+        <span style="margin-left: 10px; font-size: 12px; color: #666;">Expose picker resources and <code>picker_submit</code></span>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-adminToolsEnabled"><i class="fa fa-shield"></i> Admin Tools</label>
+        <input type="checkbox" id="node-input-adminToolsEnabled" style="width: auto;">
+        <span style="margin-left: 10px; font-size: 12px; color: #666;">Expose read-only <code>get_flow</code>. Use only behind an authenticated gateway.</span>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-adminPort"><i class="fa fa-plug"></i> Admin API Port</label>
+        <input type="number" id="node-input-adminPort" min="1" max="65535" placeholder="1880">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-adminToken"><i class="fa fa-key"></i> Admin API Token</label>
+        <input type="password" id="node-input-adminToken" placeholder="NODE_RED_ADMIN_API_TOKEN" autocomplete="off">
+    </div>
+
+    <!-- Preset Buttons -->
+    <hr>
+    <div class="form-row">
+        <label></label>
+        <button type="button" id="load-todo-preset-btn" class="btn btn-primary">
+            <i class="fa fa-download"></i> Load Todo MCP Preset
+        </button>
+    </div>
+
+    <!-- Flow Server Status -->
+    <hr>
+    <div class="form-row">
+        <label></label>
+        <button type="button" id="refresh-status-btn" class="btn btn-secondary">
+            <i class="fa fa-refresh"></i> Refresh Server Status
+        </button>
+    </div>
+    
+    <div id="flow-servers-status" style="margin-top: 10px; padding: 10px; background-color: #f8f9fa; border-left: 4px solid #007bff; font-size: 12px;">
+        Loading flow server status...
+    </div>
+</script>
+
+<script type="text/html" data-help-name="mcp-flow-server">
+    <p>A Node-RED node that runs a complete Model Context Protocol (MCP) server within Node-RED flows. This allows you to create custom MCP tools using visual flows instead of writing code.</p>
+    
+    <h3>Configuration</h3>
+    <dl class="message-properties">
+        <dt>Server Name <span class="property-type">string</span></dt>
+        <dd>Unique identifier for this MCP server instance</dd>
+        
+        <dt>Server Port <span class="property-type">number</span></dt>
+        <dd>HTTP port for the MCP server (1-65535)</dd>
+        
+        <dt>Auto Start <span class="property-type">boolean</span></dt>
+        <dd>Whether to automatically start the server when Node-RED starts</dd>
+        
+        <dt>Enable CORS <span class="property-type">boolean</span></dt>
+        <dd>Enable Cross-Origin Resource Sharing for web browser clients</dd>
+
+        <dt>OAuth Scopes <span class="property-type">string</span></dt>
+        <dd>Scopes advertised on tool descriptors as <code>_meta.securitySchemes</code>. This node does not implement OAuth server behavior.</dd>
+
+        <dt>Picker App <span class="property-type">boolean</span></dt>
+        <dd>Expose the text-only picker MCP App resource and the internal <code>picker_submit</code> tool.</dd>
+
+        <dt>Admin Tools <span class="property-type">boolean</span></dt>
+        <dd>Optionally expose read-only <code>get_flow</code> through this MCP server. Keep this behind an authenticated gateway.</dd>
+    </dl>
+
+    <h3>How It Works</h3>
+    <p>This node creates a complete MCP server that can serve tools defined by other MCP nodes in your flows:</p>
+    <ol>
+        <li><strong>Tool Registration:</strong> MCP Tool Registry nodes register available tools</li>
+        <li><strong>Tool Execution:</strong> MCP Tool Handler nodes process tool requests</li>
+        <li><strong>Protocol Handling:</strong> This server handles all MCP protocol communication</li>
+        <li><strong>Client Access:</strong> External clients can connect and use your custom tools</li>
+    </ol>
+
+    <h3>MCP Endpoints</h3>
+    <p>The server exposes standard MCP endpoints:</p>
+    <dl class="message-properties">
+        <dt>POST /mcp <span class="property-type">JSON-RPC</span></dt>
+        <dd>Main MCP protocol endpoint for tool calls and management</dd>
+        
+        <dt>GET /health <span class="property-type">HTTP</span></dt>
+        <dd>Health check endpoint returning server status</dd>
+        
+        <dt>GET /sse <span class="property-type">Server-Sent Events</span></dt>
+        <dd>Real-time event streaming for connected clients</dd>
+    </dl>
+
+    <h3>Input Commands</h3>
+    <p>Send messages with the following topics to control the server:</p>
+    <dl class="message-properties">
+        <dt>start <span class="property-type">string</span></dt>
+        <dd>Start the MCP flow server</dd>
+        
+        <dt>stop <span class="property-type">string</span></dt>
+        <dd>Stop the MCP flow server</dd>
+        
+        <dt>restart <span class="property-type">string</span></dt>
+        <dd>Restart the MCP flow server</dd>
+        
+        <dt>status <span class="property-type">string</span></dt>
+        <dd>Get current server status and tool count</dd>
+    </dl>
+
+    <h3>Output Messages</h3>
+    <p>The node outputs messages for server events and tool execution requests:</p>
+    <dl class="message-properties">
+        <dt>mcp-server-started <span class="property-type">object</span></dt>
+        <dd>Server started successfully with details</dd>
+        
+        <dt>mcp-server-stopped <span class="property-type">object</span></dt>
+        <dd>Server stopped event</dd>
+        
+        <dt>mcp-tool-execute <span class="property-type">object</span></dt>
+        <dd>Tool execution request to be handled by Tool Handler nodes</dd>
+    </dl>
+
+    <h3>Creating Custom Tools</h3>
+    <p>To create custom MCP tools:</p>
+    <ol>
+        <li>Add an <strong>MCP Tool Registry</strong> node to define your tool</li>
+        <li>Add an <strong>MCP Tool Handler</strong> node to process requests</li>
+        <li>Connect your business logic flows to the handler</li>
+        <li>Start this Flow Server to serve the tools</li>
+    </ol>
+
+    <h3>Example Tool Flow</h3>
+    <pre><code>
+[MCP Tool Registry] → defines "calculate_sum" tool
+        ↓
+[MCP Flow Server] → serves the tool at :8001
+        ↓
+[MCP Tool Handler] → receives "calculate_sum" requests
+        ↓
+[Function Node] → performs the calculation
+        ↓
+[Return Result] → sends response back to client
+</code></pre>
+
+    <h3>Integration with Existing Tools</h3>
+    <p>This Flow Server can work alongside:</p>
+    <ul>
+        <li><strong>External MCP Servers:</strong> Use MCP Client nodes to connect to external servers</li>
+        <li><strong>MCP Server Node:</strong> Run traditional Python/Node.js MCP servers</li>
+        <li><strong>MCP Tool Node:</strong> Call tools from external servers</li>
+    </ul>
+
+    <h3>Use Cases</h3>
+    <ul>
+        <li><strong>Rapid Prototyping:</strong> Quickly create and test MCP tools visually</li>
+        <li><strong>Business Logic Integration:</strong> Expose Node-RED flows as MCP tools</li>
+        <li><strong>Data Processing:</strong> Create tools that process and transform data</li>
+        <li><strong>API Aggregation:</strong> Combine multiple APIs into single MCP tools</li>
+        <li><strong>Custom Automation:</strong> Expose automation workflows as AI agent tools</li>
+    </ul>
+
+    <h3>Client Connection</h3>
+    <p>External clients can connect to your flow server:</p>
+    <pre><code>
+# HTTP Client
+POST http://localhost:8001/mcp
+Content-Type: application/json
+
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+}
+</code></pre>
+
+    <h3>Requirements</h3>
+    <p>The selected port must be available and not in use by other services. Use the "Test Port Availability" button to verify.</p>
+
+    <h3>Admin Endpoint</h3>
+    <p>View running flow servers: <code>GET /mcp-flow-servers</code></p>
+</script> 

@@ -1,0 +1,64 @@
+{
+  "name": "@olykov/node-red-contrib-mcp-server-readonly",
+  "version": "2.0.0-upstream.1",
+  "description": "Upstream-first Node-RED MCP package with read-oriented local extensions.",
+  "main": "mcp-server.js",
+  "scripts": {
+    "test": "node --test",
+    "prepublishOnly": "npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olykov/node-red-contrib-mcp-server-readonly.git"
+  },
+  "keywords": [
+    "node-red",
+    "mcp",
+    "model-context-protocol",
+    "tools",
+    "server",
+    "sse",
+    "websocket",
+    "automation",
+    "interactive",
+    "visual-programming",
+    "flow-based"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/olykov/node-red-contrib-mcp-server-readonly/issues"
+  },
+  "homepage": "https://github.com/olykov/node-red-contrib-mcp-server-readonly#readme",
+  "node-red": {
+    "nodes": {
+      "mcp-server": "mcp-server.js",
+      "mcp-client": "mcp-client.js",
+      "mcp-tool": "mcp-tool.js",
+      "mcp-flow-server": "mcp-flow-server.js",
+      "mcp-tool-registry": "mcp-tool-registry.js"
+    }
+  },
+  "dependencies": {
+    "node-cache": "^5.1.2",
+    "axios": "^1.6.0",
+    "ws": "^8.14.0",
+    "eventsource": "^2.0.2",
+    "uuid": "^9.0.0",
+    "express": "^4.18.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "peerDependencies": {
+    "node-red": ">=1.0.0"
+  },
+  "files": [
+    "*.js",
+    "*.html",
+    "*.md",
+    "LICENSE",
+    "lib/",
+    "resources/",
+    "test/"
+  ]
+}
