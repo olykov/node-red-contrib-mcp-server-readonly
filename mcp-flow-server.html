@@ -12,7 +12,6 @@
             advertisedScopes: {value: ""},
             enablePicker: {value: true},
             adminToolsEnabled: {value: false},
-            adminPort: {value: 1880, validate: function(v) { return v > 0 && v < 65536; }},
             adminToken: {value: ""}
         },
         inputs: 1,
@@ -183,11 +182,6 @@
     </div>
 
     <div class="form-row">
-        <label for="node-input-adminPort"><i class="fa fa-plug"></i> Admin API Port</label>
-        <input type="number" id="node-input-adminPort" min="1" max="65535" placeholder="1880">
-    </div>
-
-    <div class="form-row">
         <label for="node-input-adminToken"><i class="fa fa-key"></i> Admin API Token</label>
         <input type="password" id="node-input-adminToken" placeholder="NODE_RED_ADMIN_API_TOKEN" autocomplete="off">
     </div>
@@ -239,7 +233,7 @@
         <dd>Expose the text-only picker MCP App resource and the internal <code>picker_submit</code> tool.</dd>
 
         <dt>Admin Tools <span class="property-type">boolean</span></dt>
-        <dd>Optionally expose read-only <code>get_flow</code> through this MCP server. Keep this behind an authenticated gateway.</dd>
+        <dd>Optionally expose read-only <code>get_flow</code> through this MCP server. The Node-RED Admin API is read from the internal default port. Keep this behind an authenticated gateway.</dd>
     </dl>
 
     <h3>How It Works</h3>
