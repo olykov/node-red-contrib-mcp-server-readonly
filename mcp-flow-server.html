@@ -204,7 +204,22 @@
         </button>
     </div>
     
-    <div id="flow-servers-status" style="margin-top: 10px; padding: 10px; background-color: #f8f9fa; border-left: 4px solid #007bff; font-size: 12px;">
+    <style>
+        .mcp-flow-server-status {
+            margin-top: 10px;
+            padding: 10px;
+            color: var(--red-ui-primary-text-color, #333);
+            background: var(--red-ui-secondary-background, #f8f9fa);
+            border-left: 4px solid var(--red-ui-text-color-link, #007bff);
+            font-size: 12px;
+        }
+        .mcp-flow-server-status h5,
+        .mcp-flow-server-status p,
+        .mcp-flow-server-status ul {
+            color: inherit;
+        }
+    </style>
+    <div id="flow-servers-status" class="mcp-flow-server-status">
         Loading flow server status...
     </div>
 </script>
