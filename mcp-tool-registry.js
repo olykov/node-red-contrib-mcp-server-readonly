@@ -10,6 +10,7 @@ module.exports = function (RED)
         // Configuration
         node.toolName = config.toolName || "";
         node.toolDescription = config.toolDescription || "";
+        node.serverName = config.serverName || "";
         node.toolSchema = config.toolSchema || "{}";
         node.autoRegister = config.autoRegister !== false;
 
@@ -53,6 +54,7 @@ module.exports = function (RED)
                 name: node.toolName,
                 description: node.toolDescription || `Tool: ${node.toolName}`,
                 inputSchema: parsedSchema,
+                serverName: node.serverName,
                 registeredBy: node.id,
                 registrationTime: new Date()
             };
@@ -71,6 +73,7 @@ module.exports = function (RED)
                 payload: {
                     toolName: node.toolName,
                     description: node.toolDescription,
+                    serverName: node.serverName,
                     schema: parsedSchema
                 }
             });
@@ -86,7 +89,7 @@ module.exports = function (RED)
             }
 
             // Emit unregistration event
-            RED.events.emit('mcp-tool-unregister', node.toolName);
+            RED.events.emit('mcp-tool-unregister', { name: node.toolName, serverName: node.serverName });
 
             node.isRegistered = false;
             node.status({ fill: "grey", shape: "ring", text: "unregistered" });
@@ -128,21 +131,32 @@ module.exports = function (RED)
                     break;
 
                 case 'update':
-                    // Update tool definition from message
-                    if (msg.payload.toolName) node.toolName = msg.payload.toolName;
-                    if (msg.payload.toolDescription) node.toolDescription = msg.payload.toolDescription;
-                    if (msg.payload.toolSchema)
                     {
-                        try
+                        const previousToolName = node.toolName;
+                        const previousServerName = node.serverName;
+
+                        // Update tool definition from message
+                        if (msg.payload.toolName) node.toolName = msg.payload.toolName;
+                        if (msg.payload.toolDescription) node.toolDescription = msg.payload.toolDescription;
+                        if (Object.prototype.hasOwnProperty.call(msg.payload, 'serverName')) node.serverName = msg.payload.serverName || "";
+                        if (msg.payload.toolSchema)
                         {
-                            parsedSchema = JSON.parse(msg.payload.toolSchema);
-                            node.toolSchema = msg.payload.toolSchema;
-                        } catch (error)
-                        {
-                            node.warn(`Invalid schema in update: ${error.message}`);
+                            try
+                            {
+                                parsedSchema = JSON.parse(msg.payload.toolSchema);
+                                node.toolSchema = msg.payload.toolSchema;
+                            } catch (error)
+                            {
+                                node.warn(`Invalid schema in update: ${error.message}`);
+                            }
                         }
+                        if (node.isRegistered)
+                        {
+                            RED.events.emit('mcp-tool-unregister', { name: previousToolName, serverName: previousServerName });
+                            node.isRegistered = false;
+                        }
+                        node.updateRegistration();
                     }
-                    node.updateRegistration();
                     break;
 
                 case 'status':
@@ -150,6 +164,7 @@ module.exports = function (RED)
                         toolName: node.toolName,
                         isRegistered: node.isRegistered,
                         description: node.toolDescription,
+                        serverName: node.serverName,
                         schema: parsedSchema
                     };
                     node.send(msg);

@@ -7,6 +7,7 @@
             name: {value: ""},
             toolName: {value: "", required: true},
             toolDescription: {value: ""},
+            serverName: {value: ""},
             toolSchema: {value: '{\n  "type": "object",\n  "properties": {},\n  "required": []\n}'},
             autoRegister: {value: true}
         },
@@ -164,6 +165,14 @@
         </div>
     </div>
 
+    <div class="form-row">
+        <label for="node-input-serverName"><i class="fa fa-server"></i> Server Name</label>
+        <input type="text" id="node-input-serverName" placeholder="Optional MCP Flow Server name">
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+            Optional binding. When set, this tool is visible only on the matching MCP Flow Server.
+        </div>
+    </div>
+
     <hr>
     <h4>Parameter Schema</h4>
 
@@ -223,6 +232,9 @@
         
         <dt>Description <span class="property-type">string</span></dt>
         <dd>Description shown to AI agents when listing available tools</dd>
+
+        <dt>Server Name <span class="property-type">string</span></dt>
+        <dd>Optional MCP Flow Server binding. Empty keeps the tool available to all flow servers.</dd>
         
         <dt>JSON Schema <span class="property-type">JSON</span></dt>
         <dd>JSON Schema defining the tool's input parameters</dd>
@@ -235,7 +247,7 @@
     <p>This node defines the interface for an MCP tool:</p>
     <ol>
         <li><strong>Tool Definition:</strong> Defines tool name, description, and parameter schema</li>
-        <li><strong>Registration:</strong> Registers the tool with any running MCP Flow Servers</li>
+        <li><strong>Registration:</strong> Registers the tool with matching MCP Flow Servers, or all flow servers when no binding is set</li>
         <li><strong>Discoverability:</strong> Makes the tool available to AI agents via tools/list</li>
         <li><strong>Execution:</strong> Works with MCP Tool Handler nodes to process requests</li>
     </ol>

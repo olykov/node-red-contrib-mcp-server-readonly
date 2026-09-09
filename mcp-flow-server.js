@@ -14,6 +14,7 @@ module.exports = function (RED)
 
     const toolRegistry = new NodeCache({ stdTTL: 0 });
     const serverInstances = new NodeCache({ stdTTL: 0 });
+    const portServers = new Map();
 
     function parseList(value)
     {
@@ -33,6 +34,85 @@ module.exports = function (RED)
         const meta = Object.assign({}, tool._meta || {}, extraMeta || {});
         if (schemes.length) meta.securitySchemes = schemes;
         return Object.assign({}, tool, Object.keys(meta).length ? { _meta: meta } : {});
+    }
+
+    function normalizePath(value)
+    {
+        const raw = typeof value === 'string' && value.trim() ? value.trim() : '/mcp';
+        return raw.startsWith('/') ? raw : '/' + raw;
+    }
+
+    function toolBelongsToServer(tool, serverName)
+    {
+        if (!tool || !tool.serverName) return true;
+        return tool.serverName === serverName;
+    }
+
+    function registryKey(toolName, serverName)
+    {
+        return (serverName || '*') + ':' + toolName;
+    }
+
+    function getPortServer(port)
+    {
+        const key = Number(port);
+        if (portServers.has(key)) return portServers.get(key);
+
+        const state = {
+            port: key,
+            app: express(),
+            httpServer: null,
+            routes: new Map(),
+            nodes: new Set(),
+            isListening: false,
+            enableCors: false
+        };
+
+        state.app.use((req, res, next) =>
+        {
+            if (state.enableCors)
+            {
+                res.header('Access-Control-Allow-Origin', '*');
+                res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+                res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            }
+            if (req.method === 'OPTIONS') res.sendStatus(200);
+            else next();
+        });
+
+        state.app.use(express.json({ limit: '10mb' }));
+
+        state.app.get('/health', (req, res) =>
+        {
+            const servers = Array.from(state.nodes).map(node => ({
+                server: node.serverName,
+                path: node.serverPath,
+                running: node.isRunning,
+                tools: node.registeredTools().length
+            }));
+            res.json({ status: 'healthy', port: state.port, servers });
+        });
+
+        state.app.post(/.*/, async (req, res) =>
+        {
+            const node = state.routes.get(req.path);
+            if (!node) return res.status(404).json({ error: 'MCP path not found' });
+            await node.handleMcpHttpRequest(req, res);
+        });
+
+        state.app.get(/.*/, (req, res) =>
+        {
+            const suffix = '/sse';
+            if (!req.path.endsWith(suffix)) return res.status(404).json({ error: 'MCP path not found' });
+            const serverPath = req.path.slice(0, -suffix.length) || '/';
+            const node = state.routes.get(serverPath);
+            if (!node) return res.status(404).json({ error: 'MCP path not found' });
+            node.handleSseRequest(req, res);
+        });
+
+        state.httpServer = http.createServer(state.app);
+        portServers.set(key, state);
+        return state;
     }
 
     function textResult(text, isError = false)
@@ -124,6 +204,7 @@ module.exports = function (RED)
         const node = this;
 
         node.serverName = config.serverName || "node-red-mcp-server";
+        node.serverPath = normalizePath(config.serverPath);
         node.serverPort = config.serverPort || 8001;
         node.autoStart = config.autoStart || false;
         node.enableCors = config.enableCors !== false;
@@ -143,66 +224,55 @@ module.exports = function (RED)
 
         node.initializeServer = function ()
         {
-            node.app = express();
+            const portState = getPortServer(node.serverPort);
+            const existingRoute = portState.routes.get(node.serverPath);
+            if (existingRoute && existingRoute !== node) throw new Error('MCP server path already registered on this port: ' + node.serverPath);
+            portState.enableCors = portState.enableCors || node.enableCors;
+            portState.routes.set(node.serverPath, node);
+            portState.nodes.add(node);
+            node.portState = portState;
+            node.app = portState.app;
+            node.httpServer = portState.httpServer;
+        };
 
-            if (node.enableCors)
+        node.handleMcpHttpRequest = async function (req, res)
+        {
+            const request = req.body || {};
+            try
             {
-                node.app.use((req, res, next) =>
+                node.log('MCP Request: ' + JSON.stringify(request));
+                switch (request.method)
                 {
-                    res.header('Access-Control-Allow-Origin', '*');
-                    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-                    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-                    if (req.method === 'OPTIONS') res.sendStatus(200);
-                    else next();
-                });
-            }
-
-            node.app.use(express.json({ limit: '10mb' }));
-
-            node.app.get('/health', (req, res) =>
-            {
-                res.json({ status: 'healthy', server: node.serverName, uptime: process.uptime(), tools: toolRegistry.keys().length });
-            });
-
-            node.app.post('/mcp', async (req, res) =>
-            {
-                const request = req.body || {};
-                try
-                {
-                    node.log('MCP Request: ' + JSON.stringify(request));
-                    switch (request.method)
-                    {
-                        case 'tools/list': node.handleToolsList(request, res); break;
-                        case 'tools/call': await node.handleToolCall(request, res); break;
-                        case 'resources/list': node.handleResourcesList(request, res); break;
-                        case 'resources/read': node.handleResourcesRead(request, res); break;
-                        case 'initialize': node.handleInitialize(request, res); break;
-                        default:
-                            if (request.method && request.method.endsWith('_tool')) await node.handleDirectToolCall(request, res);
-                            else node.rpcError(res, request.id, -32601, 'Method not found: ' + request.method);
-                    }
-                } catch (error)
-                {
-                    node.error('MCP request error: ' + error.message);
-                    node.rpcError(res, request.id, -32603, 'Internal error', error.message, 500);
+                    case 'tools/list': node.handleToolsList(request, res); break;
+                    case 'tools/call': await node.handleToolCall(request, res); break;
+                    case 'resources/list': node.handleResourcesList(request, res); break;
+                    case 'resources/read': node.handleResourcesRead(request, res); break;
+                    case 'initialize': node.handleInitialize(request, res); break;
+                    default:
+                        if (request.method && request.method.endsWith('_tool')) await node.handleDirectToolCall(request, res);
+                        else node.rpcError(res, request.id, -32601, 'Method not found: ' + request.method);
                 }
-            });
-
-            node.app.get('/sse', (req, res) =>
+            } catch (error)
             {
-                res.writeHead(200, {
-                    'Content-Type': 'text/event-stream',
-                    'Cache-Control': 'no-cache',
-                    'Connection': 'keep-alive',
-                    'Access-Control-Allow-Origin': '*'
-                });
-                res.write('data: {"type":"connected","server":"' + node.serverName + '"}\n\n');
-                const keepAlive = setInterval(() =>
-                {
-                    res.write('data: {"type":"heartbeat","timestamp":"' + new Date().toISOString() + '"}\n\n');
-                }, 30000);
-                req.on('close', () => clearInterval(keepAlive));
+                node.error('MCP request error: ' + error.message);
+                node.rpcError(res, request.id, -32603, 'Internal error', error.message, 500);
+            }
+        };
+
+        node.handleSseRequest = function (req, res)
+        {
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*'
             });
+            res.write('data: {"type":"connected","server":"' + node.serverName + '"}\n\n');
+            const keepAlive = setInterval(() =>
+            {
+                res.write('data: {"type":"heartbeat","timestamp":"' + new Date().toISOString() + '"}\n\n');
+            }, 30000);
+            req.on('close', () => clearInterval(keepAlive));
         };
 
         node.rpcError = function (res, id, code, message, data, httpStatus)
@@ -212,6 +282,17 @@ module.exports = function (RED)
             else res.json(body);
         };
 
+        node.registeredTools = function ()
+        {
+            const tools = toolRegistry.keys()
+                .map(key => toolRegistry.get(key))
+                .filter(tool => toolBelongsToServer(tool, node.serverName));
+            const byName = new Map();
+            tools.filter(tool => !tool.serverName).forEach(tool => byName.set(tool.name, tool));
+            tools.filter(tool => tool.serverName === node.serverName).forEach(tool => byName.set(tool.name, tool));
+            return Array.from(byName.values());
+        };
+
         node.toolDescriptor = function (tool)
         {
             return withSecurityMeta({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema }, node.advertisedScopes, tool._meta);
@@ -219,12 +300,7 @@ module.exports = function (RED)
 
         node.handleToolsList = function (request, res)
         {
-            const tools = [];
-            toolRegistry.keys().forEach(key =>
-            {
-                const tool = toolRegistry.get(key);
-                if (tool) tools.push(node.toolDescriptor(tool));
-            });
+            const tools = node.registeredTools().map(tool => node.toolDescriptor(tool));
 
             if (node.enablePicker)
             {
@@ -286,7 +362,7 @@ module.exports = function (RED)
                     const adminResult = await node.adminTools.callTool(name, args);
                     return res.json({ jsonrpc: '2.0', id: request.id, result: textResult(adminResult) });
                 }
-                const tool = toolRegistry.get(name);
+                const tool = node.registeredTools().find(candidate => candidate.name === name);
                 if (!tool) return node.rpcError(res, request.id, -32602, 'Tool not found: ' + name);
                 const result = await node.executeToolFlow(tool, args);
                 res.json({ jsonrpc: '2.0', id: request.id, result: normalizeToolResult(result) });
@@ -299,7 +375,7 @@ module.exports = function (RED)
         node.handleDirectToolCall = async function (request, res)
         {
             const toolName = request.method;
-            const tool = toolRegistry.get(toolName);
+            const tool = node.registeredTools().find(candidate => candidate.name === toolName);
             if (!tool) return node.rpcError(res, request.id, -32602, 'Tool not found: ' + toolName);
             try
             {
@@ -362,23 +438,36 @@ module.exports = function (RED)
             try
             {
                 node.initializeServer();
-                node.httpServer = http.createServer(node.app);
-                node.httpServer.listen(node.serverPort, () =>
+                const portState = node.portState;
+                const markRunning = () =>
                 {
                     node.isRunning = true;
-                    node.status({ fill: 'green', shape: 'dot', text: 'running :' + node.serverPort });
+                    node.status({ fill: 'green', shape: 'dot', text: 'running :' + node.serverPort + node.serverPath });
                     serverInstances.set(node.serverId, {
                         nodeId: String(node.id),
                         serverName: String(node.serverName),
+                        path: String(node.serverPath),
                         port: Number(node.serverPort),
                         startTime: new Date().toISOString(),
                         isRunning: true
                     });
-                    node.log('MCP Flow Server started on port ' + node.serverPort);
-                    node.send({ topic: 'mcp-server-started', payload: { serverId: node.serverId, serverName: node.serverName, port: node.serverPort, startTime: new Date() } });
+                    node.log('MCP Flow Server started on port ' + node.serverPort + ' path ' + node.serverPath);
+                    node.send({ topic: 'mcp-server-started', payload: { serverId: node.serverId, serverName: node.serverName, path: node.serverPath, port: node.serverPort, startTime: new Date() } });
                     callback(null, { success: true, message: 'Server started' });
+                };
+
+                if (portState.isListening)
+                {
+                    markRunning();
+                    return;
+                }
+
+                portState.httpServer.listen(portState.port, () =>
+                {
+                    portState.isListening = true;
+                    markRunning();
                 });
-                node.httpServer.on('error', (error) =>
+                portState.httpServer.on('error', (error) =>
                 {
                     node.error('Server error: ' + error.message);
                     node.status({ fill: 'red', shape: 'dot', text: 'error' });
@@ -400,21 +489,34 @@ module.exports = function (RED)
                 return;
             }
             node.status({ fill: 'yellow', shape: 'ring', text: 'stopping...' });
-            if (node.httpServer)
+
+            const portState = node.portState;
+            if (portState)
             {
-                node.httpServer.close(() =>
-                {
-                    node.isRunning = false;
-                    node.status({ fill: 'grey', shape: 'ring', text: 'stopped' });
-                    serverInstances.del(node.serverId);
-                    node.send({ topic: 'mcp-server-stopped', payload: { serverId: node.serverId } });
-                    callback(null, { success: true, message: 'Server stopped' });
-                });
-            } else
+                portState.routes.delete(node.serverPath);
+                portState.nodes.delete(node);
+            }
+
+            const finish = () =>
             {
                 node.isRunning = false;
                 node.status({ fill: 'grey', shape: 'ring', text: 'stopped' });
+                serverInstances.del(node.serverId);
+                node.send({ topic: 'mcp-server-stopped', payload: { serverId: node.serverId } });
                 callback(null, { success: true, message: 'Server stopped' });
+            };
+
+            if (portState && portState.nodes.size === 0 && portState.httpServer)
+            {
+                portState.httpServer.close(() =>
+                {
+                    portState.isListening = false;
+                    portServers.delete(portState.port);
+                    finish();
+                });
+            } else
+            {
+                finish();
             }
         };
 
@@ -427,7 +529,7 @@ module.exports = function (RED)
                 case 'stop': node.stopServer(); break;
                 case 'restart': node.stopServer(() => setTimeout(() => node.startServer(), 1000)); break;
                 case 'status':
-                    msg.payload = { serverId: node.serverId, serverName: node.serverName, isRunning: node.isRunning, port: node.serverPort, toolCount: toolRegistry.keys().length };
+                    msg.payload = { serverId: node.serverId, serverName: node.serverName, path: node.serverPath, isRunning: node.isRunning, port: node.serverPort, toolCount: node.registeredTools().length };
                     node.send(msg);
                     break;
             }
@@ -444,8 +546,21 @@ module.exports = function (RED)
 
     RED.nodes.registerType('mcp-flow-server', MCPFlowServerNode);
 
-    RED.events.on('mcp-tool-register', (toolDef) => toolRegistry.set(toolDef.name, toolDef));
-    RED.events.on('mcp-tool-unregister', (toolName) => toolRegistry.del(toolName));
+    RED.events.on('mcp-tool-register', (toolDef) =>
+    {
+        if (!toolDef || !toolDef.name) return;
+        toolRegistry.set(registryKey(toolDef.name, toolDef.serverName), toolDef);
+    });
+    RED.events.on('mcp-tool-unregister', (toolDef) =>
+    {
+        if (typeof toolDef === 'string')
+        {
+            toolRegistry.del(registryKey(toolDef, ''));
+            return;
+        }
+        if (!toolDef || !toolDef.name) return;
+        toolRegistry.del(registryKey(toolDef.name, toolDef.serverName));
+    });
 
     RED.httpAdmin.get('/mcp-flow-servers', function (req, res)
     {
@@ -455,7 +570,10 @@ module.exports = function (RED)
             const server = serverInstances.get(key);
             if (server)
             {
-                servers.push({ serverId: key, serverName: server.serverName, isRunning: server.isRunning, port: server.port, startTime: server.startTime, toolCount: toolRegistry.keys().length });
+                const toolCount = toolRegistry.keys()
+                    .map(toolKey => toolRegistry.get(toolKey))
+                    .filter(tool => toolBelongsToServer(tool, server.serverName)).length;
+                servers.push({ serverId: key, serverName: server.serverName, path: server.path, isRunning: server.isRunning, port: server.port, startTime: server.startTime, toolCount });
             }
         });
         res.json({ servers });

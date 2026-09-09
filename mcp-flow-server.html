@@ -6,6 +6,7 @@
         defaults: {
             name: {value: ""},
             serverName: {value: "node-red-mcp-server", required: true},
+            serverPath: {value: "/mcp", required: true},
             serverPort: {value: 8001, required: true, validate: function(v) { return v > 0 && v < 65536; }},
             autoStart: {value: false},
             enableCors: {value: true},
@@ -39,7 +40,7 @@
                         var html = "<h5>Running Flow Servers:</h5><ul>";
                         data.servers.forEach(function(server) {
                             var status = server.isRunning ? "🟢" : "🔴";
-                            html += `<li>${status} ${server.serverName} (port ${server.port}) - ${server.toolCount} tools</li>`;
+                            html += `<li>${status} ${server.serverName} ${server.path || '/mcp'} (port ${server.port}) - ${server.toolCount} tools</li>`;
                         });
                         html += "</ul>";
                         statusDiv.html(html);
@@ -125,6 +126,14 @@
 
     <hr>
     <h4>Server Configuration</h4>
+
+    <div class="form-row">
+        <label for="node-input-serverPath"><i class="fa fa-link"></i> Server Path</label>
+        <input type="text" id="node-input-serverPath" placeholder="/mcp">
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">
+            HTTP path served by this MCP server on the configured port.
+        </div>
+    </div>
 
     <div class="form-row">
         <label for="node-input-serverPort"><i class="fa fa-plug"></i> Server Port</label>
@@ -216,6 +225,9 @@
         <dt>Server Name <span class="property-type">string</span></dt>
         <dd>Unique identifier for this MCP server instance</dd>
         
+        <dt>Server Path <span class="property-type">string</span></dt>
+        <dd>HTTP path for the MCP JSON-RPC endpoint. Defaults to <code>/mcp</code>.</dd>
+
         <dt>Server Port <span class="property-type">number</span></dt>
         <dd>HTTP port for the MCP server (1-65535)</dd>
         
@@ -247,8 +259,8 @@
     <h3>MCP Endpoints</h3>
     <p>The server exposes standard MCP endpoints:</p>
     <dl class="message-properties">
-        <dt>POST /mcp <span class="property-type">JSON-RPC</span></dt>
-        <dd>Main MCP protocol endpoint for tool calls and management</dd>
+        <dt>POST &lt;Server Path&gt; <span class="property-type">JSON-RPC</span></dt>
+        <dd>Main MCP protocol endpoint for tool calls and management. Defaults to <code>/mcp</code>.</dd>
         
         <dt>GET /health <span class="property-type">HTTP</span></dt>
         <dd>Health check endpoint returning server status</dd>
