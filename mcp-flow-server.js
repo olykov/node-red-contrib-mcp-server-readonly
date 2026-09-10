@@ -225,8 +225,15 @@ module.exports = function (RED)
             await node.handleMcpHttpRequest(req, res);
         });
 
-        state.app.get(/.*/, (req, res) =>
+        state.app.get(/.*/, async (req, res) =>
         {
+            const directNode = state.routes.get(req.path);
+            if (directNode)
+            {
+                const authResult = await validateRequest(directNode, req);
+                if (!authResult.ok) return writeAuthFailure(req, res, directNode, authResult);
+                return res.status(405).json({ error: 'method_not_allowed', error_description: 'Use JSON-RPC POST for MCP requests' });
+            }
             const suffix = '/sse';
             if (!req.path.endsWith(suffix)) return res.status(404).json({ error: 'MCP path not found' });
             const serverPath = req.path.slice(0, -suffix.length) || '/';

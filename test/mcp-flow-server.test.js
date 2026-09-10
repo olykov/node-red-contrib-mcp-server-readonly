@@ -358,6 +358,29 @@ describe('upstream mcp-flow-server local extensions', () => {
         assert.strictEqual(res.body.error, 'invalid_token');
     });
 
+    it('returns OAuth challenge for GET discovery probes on an OAuth endpoint', async () => {
+        const authNode = { id: 'auth-1', enabled: true, baseScopes: 'openid profile email', readAccessToken: async () => null };
+        const { server } = buildServer({
+            auth: 'auth-1',
+            authMode: 'oauth',
+            enablePicker: false,
+            __nodes: { 'auth-1': authNode },
+            __runtime: { serverPort: 18110, publicBaseUrl: 'https://mcp.example.test' }
+        });
+
+        await new Promise((resolve, reject) => server.startServer(error => error ? reject(error) : resolve()));
+        try
+        {
+            const res = await fetch('http://127.0.0.1:18110/mcp/test', { headers: { host: 'mcp.example.test' } });
+            assert.strictEqual(res.status, 401);
+            assert.match(res.headers.get('www-authenticate'), /^Bearer /);
+            assert.match(res.headers.get('www-authenticate'), /oauth-protected-resource\/mcp\/test/);
+        } finally
+        {
+            await new Promise(resolve => server.stopServer(() => resolve()));
+        }
+    });
+
     it('allows initialize with a valid endpoint-scoped access token', async () => {
         const authNode = {
             id: 'auth-1',
