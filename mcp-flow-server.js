@@ -8,6 +8,18 @@ module.exports = function (RED)
     const NodeCache = require('node-cache');
     const { createAdminTools } = require('./lib/admin-tools');
     const { MCP_APP_RESOURCES, PICKER_URI } = require('./lib/mcp-app-resources');
+    const {
+        absoluteUrl,
+        authorizeMetadata,
+        beginAuthorization,
+        completeAuthorization,
+        exchangeClientCode,
+        isAuthRequired,
+        policyAllowsTool,
+        protectedResourceMetadata,
+        validateRequest,
+        writeAuthFailure
+    } = require('./lib/mcp-auth');
 
     const PICKER_SUBMIT_TOOL = 'picker_submit';
     const LEGACY_UI_RESOURCE_URI_META = 'ui/resourceUri';
@@ -52,6 +64,12 @@ module.exports = function (RED)
     {
         const getNode = RED.nodes && typeof RED.nodes.getNode === 'function' ? RED.nodes.getNode.bind(RED.nodes) : null;
         return config.runtime && getNode ? getNode(config.runtime) : null;
+    }
+
+    function configNode(RED, id)
+    {
+        const getNode = RED.nodes && typeof RED.nodes.getNode === 'function' ? RED.nodes.getNode.bind(RED.nodes) : null;
+        return id && getNode ? getNode(id) : null;
     }
 
     function runtimeAdminToken(runtime)
@@ -111,6 +129,7 @@ module.exports = function (RED)
         });
 
         state.app.use(express.json({ limit: '10mb' }));
+        state.app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
         state.app.get('/health', (req, res) =>
         {
@@ -121,6 +140,82 @@ module.exports = function (RED)
                 tools: node.registeredTools().length
             }));
             res.json({ status: 'healthy', port: state.port, servers });
+        });
+
+        state.app.get(/^\/\.well-known\/oauth-protected-resource(\/.*)?$/, (req, res) =>
+        {
+            const serverPath = req.params && req.params[0] ? normalizePath(req.params[0]) : normalizePath(req.query.resource || '');
+            const node = state.routes.get(serverPath);
+            if (!node || !isAuthRequired(node)) return res.status(404).json({ error: 'MCP protected resource not found' });
+            res.json(protectedResourceMetadata(req, node));
+        });
+
+        state.app.get(/^\/\.well-known\/oauth-authorization-server(\/.*)?$/, (req, res) =>
+        {
+            const authId = req.params && req.params[0] ? decodeURIComponent(String(req.params[0]).replace(/^\//, '')) : '';
+            const node = Array.from(state.routes.values()).find(candidate =>
+                isAuthRequired(candidate) && candidate.authConfig && (!authId || candidate.authConfig.id === authId));
+            if (!node) return res.status(404).json({ error: 'MCP authorization server not found' });
+            res.json(authorizeMetadata(req, node));
+        });
+
+        state.app.get(/^\/oauth\/([^/]+)\/authorize$/, async (req, res) =>
+        {
+            const authId = decodeURIComponent(req.params[0]);
+            const resource = req.query && req.query.resource;
+            const node = Array.from(state.routes.values()).find(candidate =>
+                isAuthRequired(candidate) && candidate.authConfig && candidate.authConfig.id === authId &&
+                (!resource || resource === absoluteUrl(req, candidate.publicBaseUrl, candidate.serverPath)));
+            if (!node) return res.status(404).json({ error: 'MCP authorization endpoint not found' });
+            try
+            {
+                await beginAuthorization(req, res, node);
+            } catch (error)
+            {
+                res.status(400).json({ error: 'invalid_request', error_description: error.message });
+            }
+        });
+
+        state.app.get(/^\/oauth\/([^/]+)\/callback$/, async (req, res) =>
+        {
+            const authId = decodeURIComponent(req.params[0]);
+            const stateRecord = req.query && req.query.state ? await Array.from(state.routes.values())
+                .find(candidate => isAuthRequired(candidate) && candidate.authConfig && candidate.authConfig.id === authId)
+                ?.authConfig.readState(req.query.state) : null;
+            const node = stateRecord ? Array.from(state.routes.values()).find(candidate => candidate.endpointId === stateRecord.endpointId) : null;
+            if (!node) return res.status(400).json({ error: 'invalid_state' });
+            try
+            {
+                await completeAuthorization(req, res, node);
+            } catch (error)
+            {
+                res.status(400).json({ error: 'invalid_request', error_description: error.message });
+            }
+        });
+
+        state.app.post(/^\/oauth\/([^/]+)\/token$/, async (req, res) =>
+        {
+            const authId = decodeURIComponent(req.params[0]);
+            const code = req.body && req.body.code;
+            const node = code ? await (async () =>
+            {
+                for (const candidate of state.routes.values())
+                {
+                    if (!isAuthRequired(candidate) || !candidate.authConfig || candidate.authConfig.id !== authId) continue;
+                    const record = await candidate.authConfig.readCode(code);
+                    if (record && record.endpointId) return Array.from(state.routes.values()).find(item => item.endpointId === record.endpointId) || candidate;
+                    if (record) return candidate;
+                }
+                return null;
+            })() : null;
+            if (!node) return res.status(400).json({ error: 'invalid_grant' });
+            try
+            {
+                await exchangeClientCode(req, res, node);
+            } catch (error)
+            {
+                res.status(400).json({ error: 'invalid_request', error_description: error.message });
+            }
         });
 
         state.app.post(/.*/, async (req, res) =>
@@ -235,6 +330,7 @@ module.exports = function (RED)
         node.name = config.name || '';
         node.runtimeName = config.runtimeName || node.name || 'mcp-runtime';
         node.serverPort = Number(config.serverPort || 8001);
+        node.publicBaseUrl = config.publicBaseUrl || '';
         node.autoStart = config.autoStart || false;
         node.enableCors = config.enableCors !== false;
         node.adminPort = Number(config.adminPort || 1880);
@@ -250,13 +346,19 @@ module.exports = function (RED)
 
         node.runtimeId = config.runtime || '';
         node.runtime = runtime;
+        node.authConfigId = config.auth || '';
+        node.authConfig = configNode(RED, config.auth);
         node.endpointId = node.id;
         node.serverName = config.serverName || config.name || 'node-red-mcp-server';
         node.serverPath = normalizePath(config.serverPath);
         node.serverPort = runtime ? runtime.serverPort : 0;
+        node.publicBaseUrl = runtime ? runtime.publicBaseUrl : '';
         node.autoStart = runtime ? runtime.autoStart : false;
         node.enableCors = runtime ? runtime.enableCors : false;
         node.advertisedScopes = parseList(config.advertisedScopes || '');
+        node.authMode = config.authMode || 'inherit';
+        node.allowedGroups = parseList(config.allowedGroups || '');
+        node.endpointRequiredScopes = parseList(config.requiredScopes || '');
         node.enablePicker = config.enablePicker !== false;
         node.adminToolsEnabled = hasAdminTools(runtime, node.serverPath);
         node.adminPort = runtime ? runtime.adminPort : 0;
@@ -297,11 +399,13 @@ module.exports = function (RED)
             const request = req.body || {};
             try
             {
-                node.log('MCP Request: ' + JSON.stringify(request));
+                const authResult = await validateRequest(node, req);
+                if (!authResult.ok) return writeAuthFailure(req, res, node, authResult);
+                req.mcpAuth = authResult.claims;
                 switch (request.method)
                 {
-                    case 'tools/list': node.handleToolsList(request, res); break;
-                    case 'tools/call': await node.handleToolCall(request, res); break;
+                    case 'tools/list': node.handleToolsList(request, res, req.mcpAuth); break;
+                    case 'tools/call': await node.handleToolCall(request, req, res); break;
                     case 'resources/list': node.handleResourcesList(request, res); break;
                     case 'resources/read': node.handleResourcesRead(request, res); break;
                     case 'initialize': node.handleInitialize(request, res); break;
@@ -352,7 +456,7 @@ module.exports = function (RED)
 
         node.toolScopes = function (tool)
         {
-            return uniqueList([].concat(node.advertisedScopes, tool.requiredScopes || []));
+            return uniqueList([].concat(node.advertisedScopes, node.endpointRequiredScopes, tool.requiredScopes || []));
         };
 
         node.toolDescriptor = function (tool)
@@ -360,9 +464,11 @@ module.exports = function (RED)
             return withSecurityMeta({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema }, node.toolScopes(tool), tool._meta);
         };
 
-        node.handleToolsList = function (request, res)
+        node.handleToolsList = function (request, res, authClaims)
         {
-            const tools = node.registeredTools().map(tool => node.toolDescriptor(tool));
+            const tools = node.registeredTools()
+                .filter(tool => !authClaims || policyAllowsTool(node, tool, authClaims))
+                .map(tool => node.toolDescriptor(tool));
 
             if (node.enablePicker)
             {
@@ -408,8 +514,13 @@ module.exports = function (RED)
             });
         };
 
-        node.handleToolCall = async function (request, res)
+        node.handleToolCall = async function (request, req, res)
         {
+            if (!res)
+            {
+                res = req;
+                req = {};
+            }
             const params = request.params || {};
             const name = params.name;
             const args = params.arguments || {};
@@ -426,6 +537,10 @@ module.exports = function (RED)
                 }
                 const tool = node.registeredTools().find(candidate => candidate.name === name);
                 if (!tool) return node.rpcError(res, request.id, -32602, 'Tool not found: ' + name);
+                if (req && req.mcpAuth && !policyAllowsTool(node, tool, req.mcpAuth))
+                {
+                    return node.rpcError(res, request.id, -32001, 'Forbidden', 'Insufficient tool scope', 403);
+                }
                 const result = await node.executeToolFlow(tool, args);
                 res.json({ jsonrpc: '2.0', id: request.id, result: normalizeToolResult(result) });
             } catch (error)
@@ -593,7 +708,7 @@ module.exports = function (RED)
                 case 'stop': node.stopServer(); break;
                 case 'restart': node.stopServer(() => setTimeout(() => node.startServer(), 1000)); break;
                 case 'status':
-                    msg.payload = { serverId: node.serverId, runtimeId: node.runtimeId, endpointId: node.endpointId, serverName: node.serverName, path: node.serverPath, isRunning: node.isRunning, port: node.serverPort, toolCount: node.registeredTools().length };
+                    msg.payload = { serverId: node.serverId, runtimeId: node.runtimeId, endpointId: node.endpointId, serverName: node.serverName, path: node.serverPath, isRunning: node.isRunning, port: node.serverPort, toolCount: node.registeredTools().length, authRequired: isAuthRequired(node) };
                     node.send(msg);
                     break;
             }

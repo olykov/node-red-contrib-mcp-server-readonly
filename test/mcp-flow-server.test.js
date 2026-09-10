@@ -61,8 +61,18 @@ function mockRes() {
     return {
         statusCode: 200,
         body: undefined,
+        headers: {},
+        set(name, value) { this.headers[name.toLowerCase()] = value; return this; },
         status(code) { this.statusCode = code; return this; },
         json(body) { this.body = body; return this; }
+    };
+}
+
+function mockReq(body, headers = {}) {
+    return {
+        body,
+        headers: Object.assign({ host: 'mcp.example.test' }, headers),
+        path: '/mcp/test'
     };
 }
 
@@ -212,7 +222,7 @@ describe('upstream mcp-flow-server local extensions', () => {
             serverPort: 18003,
             adminPort: 1881,
             adminEndpointPath: '/internal/mcp/ops',
-            credentials: { adminToken: 'test-token' }
+            credentials: { adminToken: 'configured-value' }
         };
         const adminServer = buildServer({
             id: 'admin-endpoint',
@@ -257,7 +267,7 @@ describe('upstream mcp-flow-server local extensions', () => {
     });
 
     it('uses NODE_RED_ADMIN_API_TOKEN for admin tool gating', () => {
-        process.env.NODE_RED_ADMIN_API_TOKEN = 'env-token';
+        process.env.NODE_RED_ADMIN_API_TOKEN = 'configured-value';
         try
         {
             const { server } = buildServer({
@@ -325,5 +335,137 @@ describe('upstream mcp-flow-server local extensions', () => {
         await server.handleToolCall({ id: 3, params: { name: 'picker_submit', arguments: { selectedIds: ['a'], otherOption: 'note' } } }, res);
         assert.deepStrictEqual(res.body.result.structuredContent.selectedIds, ['a']);
         assert.strictEqual(res.body.result.structuredContent.otherOption, 'note');
+    });
+
+    it('returns OAuth challenge when an OAuth endpoint has no bearer token', async () => {
+        const authNode = { id: 'auth-1', enabled: true, baseScopes: 'openid profile email', readAccessToken: async () => null };
+        const { server } = buildServer({
+            auth: 'auth-1',
+            authMode: 'oauth',
+            requiredScopes: 'resource:read',
+            allowedGroups: 'team-a',
+            enablePicker: false,
+            __nodes: { 'auth-1': authNode },
+            __runtime: { publicBaseUrl: 'https://mcp.example.test' }
+        });
+        const res = mockRes();
+
+        await server.handleMcpHttpRequest(mockReq({ jsonrpc: '2.0', id: 1, method: 'initialize' }), res);
+
+        assert.strictEqual(res.statusCode, 401);
+        assert.match(res.headers['www-authenticate'], /^Bearer /);
+        assert.match(res.headers['www-authenticate'], /oauth-protected-resource\/mcp\/test/);
+        assert.strictEqual(res.body.error, 'invalid_token');
+    });
+
+    it('allows initialize with a valid endpoint-scoped access token', async () => {
+        const authNode = {
+            id: 'auth-1',
+            enabled: true,
+            baseScopes: 'openid profile email',
+            readAccessToken: async token => token === 'configured-value' ? {
+                resource: 'https://mcp.example.test/mcp/test',
+                scopes: ['resource:read'],
+                groups: ['team-a'],
+                subject: 'user-1'
+            } : null
+        };
+        const { server } = buildServer({
+            auth: 'auth-1',
+            authMode: 'oauth',
+            requiredScopes: 'resource:read',
+            allowedGroups: 'team-a',
+            enablePicker: false,
+            __nodes: { 'auth-1': authNode },
+            __runtime: { publicBaseUrl: 'https://mcp.example.test' }
+        });
+        const res = mockRes();
+
+        await server.handleMcpHttpRequest(mockReq(
+            { jsonrpc: '2.0', id: 1, method: 'initialize' },
+            { authorization: 'Bearer configured-value' }
+        ), res);
+
+        assert.strictEqual(res.statusCode, 200);
+        assert.strictEqual(res.body.result.serverInfo.name, 'test');
+    });
+
+    it('filters tools/list by tool-level required scopes', async () => {
+        const authNode = {
+            id: 'auth-1',
+            enabled: true,
+            baseScopes: 'openid profile email',
+            readAccessToken: async () => ({
+                resource: 'https://mcp.example.test/mcp/test',
+                scopes: ['resource:read', 'tool:read'],
+                groups: ['team-a']
+            })
+        };
+        const { RED, server } = buildServer({
+            auth: 'auth-1',
+            authMode: 'oauth',
+            requiredScopes: 'resource:read',
+            allowedGroups: 'team-a',
+            enablePicker: false,
+            __nodes: { 'auth-1': authNode },
+            __runtime: { publicBaseUrl: 'https://mcp.example.test' }
+        });
+        RED.events.emit('mcp-tool-register', {
+            name: 'read_tool',
+            description: 'Read',
+            requiredScopes: ['tool:read'],
+            inputSchema: { type: 'object', properties: {} }
+        });
+        RED.events.emit('mcp-tool-register', {
+            name: 'write_tool',
+            description: 'Write',
+            requiredScopes: ['tool:write'],
+            inputSchema: { type: 'object', properties: {} }
+        });
+        const res = mockRes();
+
+        await server.handleMcpHttpRequest(mockReq(
+            { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+            { authorization: 'Bearer scoped-token' }
+        ), res);
+
+        assert.deepStrictEqual(res.body.result.tools.map(tool => tool.name), ['read_tool']);
+    });
+
+    it('rejects tools/call when the token lacks the tool scope', async () => {
+        const authNode = {
+            id: 'auth-1',
+            enabled: true,
+            baseScopes: 'openid profile email',
+            readAccessToken: async () => ({
+                resource: 'https://mcp.example.test/mcp/test',
+                scopes: ['resource:read'],
+                groups: ['team-a']
+            })
+        };
+        const { RED, server } = buildServer({
+            auth: 'auth-1',
+            authMode: 'oauth',
+            requiredScopes: 'resource:read',
+            allowedGroups: 'team-a',
+            enablePicker: false,
+            __nodes: { 'auth-1': authNode },
+            __runtime: { publicBaseUrl: 'https://mcp.example.test' }
+        });
+        RED.events.emit('mcp-tool-register', {
+            name: 'write_tool',
+            description: 'Write',
+            requiredScopes: ['tool:write'],
+            inputSchema: { type: 'object', properties: {} }
+        });
+        const res = mockRes();
+
+        await server.handleMcpHttpRequest(mockReq(
+            { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'write_tool', arguments: {} } },
+            { authorization: 'Bearer scoped-token' }
+        ), res);
+
+        assert.strictEqual(res.statusCode, 403);
+        assert.strictEqual(res.body.error.message, 'Forbidden');
     });
 });

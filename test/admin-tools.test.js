@@ -13,7 +13,7 @@ function build(handlers) {
         if (!handler) throw new Error('unmocked request: ' + method + ' ' + path);
         return handler({ method, path, body });
     };
-    const tools = createAdminTools({ adminPort: 1880, getAdminToken: () => 'tok', httpRequest });
+    const tools = createAdminTools({ adminPort: 1880, getAdminToken: () => 'configured-value', httpRequest });
     return { tools, calls };
 }
 
@@ -63,10 +63,10 @@ describe('lib/admin-tools', () => {
             inspected.push({ method, hostname, port, path, headers });
             return { status: 200, body: [] };
         };
-        const tools = createAdminTools({ adminPort: 1880, getAdminToken: () => 'test-token', httpRequest });
+        const tools = createAdminTools({ adminPort: 1880, getAdminToken: () => 'configured-value', httpRequest });
         await tools.callTool('get_flow', {});
         assert.deepStrictEqual(inspected[0], {
-            method: 'GET', hostname: '127.0.0.1', port: 1880, path: '/flows', headers: { Authorization: ['Bearer', 'test-token'].join(' ') }
+            method: 'GET', hostname: '127.0.0.1', port: 1880, path: '/flows', headers: { Authorization: ['Bearer', 'configured-value'].join(' ') }
         });
     });
 });

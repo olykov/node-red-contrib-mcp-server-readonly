@@ -1,8 +1,8 @@
 # Node-RED MCP Server Readonly
 
-Upstream-first fork of `node-red-contrib-mcp-server@1.1.5` for internal MCP tool runtimes.
+Upstream-first fork of `node-red-contrib-mcp-server@1.1.5` for MCP tool runtimes.
 
-The package keeps the upstream node model and adds a small local patch set for read-oriented MCP Apps use cases. Public OAuth, CIMD, PKCE, and access-policy enforcement belong in the gateway layer in front of Node-RED.
+The package keeps the upstream node model and adds endpoint-scoped MCP flow serving, picker resources, read-only admin helpers, and package-level OAuth support for MCP endpoints.
 
 ## Scope
 
@@ -14,6 +14,8 @@ Included nodes:
 - `mcp-flow-server`
 - `mcp-tool-registry`
 - `mcp-runtime` config node
+- `mcp-redis` config node
+- `mcp-auth` config node
 
 Local extensions:
 
@@ -23,23 +25,26 @@ Local extensions:
 - Per-tool required scopes in `_meta.securitySchemes`.
 - Text-only MCP Apps picker resource and `picker_submit` helper tool.
 - Optional read-only `get_flow` tool gated by runtime admin settings and an exact endpoint path.
+- OIDC-backed MCP authorization configuration.
+- Memory or Redis-backed storage for short-lived auth state and opaque access tokens.
+- Bearer token enforcement for protected MCP endpoints.
+- Authorization-code flow bridge with PKCE S256, OIDC ID token validation, and userinfo claim extraction.
 - Tests for the read-only admin boundary and flow-server execution path.
 
-Not included:
+Not included yet:
 
-- OAuth authorization-server implementation.
-- Dynamic client registration endpoints.
-- Authorization-server metadata shim.
+- Verified interoperability with hosted MCP clients.
+- Refresh token support.
 - Removed local compatibility nodes from earlier fork revisions.
 
 ## Architecture
 
-Node-RED runs MCP tools and exposes the upstream MCP flow server. A separate gateway should handle public OAuth behavior, token validation, client metadata, and any internet-facing policy decisions.
+Node-RED runs MCP tools and exposes MCP endpoints from this package. Authorization routes are registered by the package on the same MCP runtime port; they are not modeled as Node-RED HTTP-in flows.
 
 Expected boundary:
 
 ```text
-MCP client -> OAuth gateway -> Node-RED MCP flow server -> Node-RED flows
+MCP client -> Node-RED MCP package auth layer -> Node-RED MCP flow server -> Node-RED flows
 ```
 
 ## Installation
@@ -48,7 +53,7 @@ From a Git reference:
 
 ```bash
 cd ~/.node-red
-npm install git+ssh://git@github.com/olykov/node-red-contrib-mcp-server-readonly.git#<commit>
+npm install git+ssh://git@example.com/org/node-red-contrib-mcp-server-readonly.git#<commit>
 ```
 
 For local development:
@@ -59,14 +64,20 @@ npm install
 npm test
 npm link
 cd ~/.node-red
-npm link @olykov/node-red-contrib-mcp-server-readonly
+npm link <package-name>
 ```
 
 ## Flow Server Extensions
 
-`mcp-runtime` owns the local HTTP listener: port, auto-start, CORS, and optional admin API settings.
+`mcp-runtime` owns the local HTTP listener: port, public base URL, auto-start, CORS, and optional admin API settings.
 
-`mcp-flow-server` defines one logical MCP endpoint on a selected runtime: MCP name, HTTP path, base scopes, and picker support. A runtime is required.
+`mcp-redis` defines storage for short-lived authorization state and opaque access tokens. Memory mode is for local development only. Redis-backed modes are intended for shared or restarted runtimes.
+
+`mcp-auth` defines OIDC settings, storage selection, and token TTLs. Secrets are stored as Node-RED credentials or read from environment variables.
+
+Client metadata hosts must be allow-listed. This prevents the authorization endpoint from fetching arbitrary user-provided URLs during client metadata validation.
+
+`mcp-flow-server` defines one logical MCP endpoint on a selected runtime: MCP name, HTTP path, optional auth config, endpoint groups/scopes, base scopes, and picker support. A runtime is required.
 
 One runtime owns one local port. Multiple endpoints may share that runtime port when their MCP paths differ.
 
@@ -88,13 +99,17 @@ msg.payload = { executionId, result };
 
 ## Configuration Notes
 
-`mcp-flow-server` base scopes and `mcp-tool-registry` required scopes only advertise scopes in tool metadata. They do not validate tokens and do not make Node-RED an OAuth server.
+`mcp-flow-server` endpoint scopes and `mcp-tool-registry` required scopes are both enforced when an endpoint requires OAuth. Tool descriptors also advertise the combined scopes in `_meta.securitySchemes`.
 
 `mcp-tool-registry` can bind a tool to one endpoint. Leaving the endpoint empty exposes the tool on every endpoint in the same Node-RED runtime.
 
 `Picker App` exposes the picker resource and `picker_submit` helper tool.
 
 Admin tools expose read-only `get_flow` only when the selected runtime has Admin Port, Admin Token, and Admin Endpoint Path configured, and the endpoint path exactly matches that Admin Endpoint Path.
+
+Protected endpoints return `401` with `WWW-Authenticate` pointing to OAuth protected-resource metadata. Access decisions combine endpoint groups, endpoint scopes, and tool scopes.
+
+The authorization endpoint requires PKCE S256, validates the client metadata host allow-list, checks the exact redirect URI against the client metadata document, delegates login to the configured OIDC issuer, validates the returned ID token through JWKS, and issues short-lived opaque MCP access tokens.
 
 ## Verification
 
@@ -105,7 +120,7 @@ npm test
 npm pack --dry-run
 ```
 
-Run source scans before publishing to confirm that removed OAuth shim routes and sensitive material are absent.
+Run source scans before publishing to confirm that sensitive material and environment-specific names are absent.
 
 ## Upstream Updates
 

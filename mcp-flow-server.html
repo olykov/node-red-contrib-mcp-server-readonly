@@ -5,6 +5,7 @@
             name: { value: '' },
             runtimeName: { value: 'mcp-runtime', required: true },
             serverPort: { value: 8001, required: true, validate: function(v) { return v > 0 && v < 65536; } },
+            publicBaseUrl: { value: '' },
             autoStart: { value: false },
             enableCors: { value: true },
             adminPort: { value: 1880, required: false, validate: function(v) { return v === '' || (v > 0 && v < 65536); } },
@@ -24,8 +25,12 @@
         defaults: {
             name: { value: '' },
             runtime: { value: '', type: 'mcp-runtime', required: true },
+            auth: { value: '', type: 'mcp-auth', required: false },
             serverName: { value: 'node-red-mcp-server', required: true },
             serverPath: { value: '/mcp', required: true },
+            authMode: { value: 'inherit' },
+            allowedGroups: { value: '' },
+            requiredScopes: { value: '' },
             advertisedScopes: { value: '' },
             enablePicker: { value: true }
         },
@@ -79,6 +84,10 @@
         <input type="number" id="node-config-input-serverPort" min="1" max="65535" placeholder="8001">
     </div>
     <div class="form-row">
+        <label for="node-config-input-publicBaseUrl"><i class="fa fa-link"></i> Public Base URL</label>
+        <input type="text" id="node-config-input-publicBaseUrl" placeholder="https://mcp.example.com">
+    </div>
+    <div class="form-row">
         <label for="node-config-input-autoStart"><i class="fa fa-play"></i> Auto Start</label>
         <input type="checkbox" id="node-config-input-autoStart" style="width: auto;">
     </div>
@@ -117,6 +126,10 @@
         <label for="node-input-runtime"><i class="fa fa-sitemap"></i> Runtime</label>
         <input type="text" id="node-input-runtime">
     </div>
+    <div class="form-row">
+        <label for="node-input-auth"><i class="fa fa-lock"></i> Auth</label>
+        <input type="text" id="node-input-auth">
+    </div>
 
     <hr>
     <h4>MCP Endpoint</h4>
@@ -128,6 +141,22 @@
     <div class="form-row">
         <label for="node-input-serverPath"><i class="fa fa-link"></i> MCP Path</label>
         <input type="text" id="node-input-serverPath" placeholder="/mcp">
+    </div>
+    <div class="form-row">
+        <label for="node-input-authMode"><i class="fa fa-shield"></i> Auth Mode</label>
+        <select id="node-input-authMode">
+            <option value="inherit">Inherit auth config</option>
+            <option value="public">Public</option>
+            <option value="oauth">OAuth required</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="node-input-allowedGroups"><i class="fa fa-users"></i> Allowed Groups</label>
+        <input type="text" id="node-input-allowedGroups" placeholder="Optional comma- or space-separated groups">
+    </div>
+    <div class="form-row">
+        <label for="node-input-requiredScopes"><i class="fa fa-check"></i> Required Scopes</label>
+        <input type="text" id="node-input-requiredScopes" placeholder="Optional endpoint scopes">
     </div>
     <div class="form-row">
         <label for="node-input-advertisedScopes"><i class="fa fa-lock"></i> Base Scopes</label>
@@ -194,6 +223,8 @@
     <dl class="message-properties">
         <dt>Port <span class="property-type">number</span></dt>
         <dd>Local HTTP port. Multiple MCP Flow Server nodes may share one runtime port when their MCP paths differ.</dd>
+        <dt>Public Base URL <span class="property-type">string</span></dt>
+        <dd>External base URL used when building OAuth metadata and challenges. If empty, request headers are used.</dd>
         <dt>Auto Start <span class="property-type">boolean</span></dt>
         <dd>Start endpoints on this runtime when Node-RED starts.</dd>
         <dt>CORS <span class="property-type">boolean</span></dt>
@@ -214,10 +245,18 @@
     <dl class="message-properties">
         <dt>Runtime <span class="property-type">mcp-runtime</span></dt>
         <dd>Local HTTP runtime that listens on a port and hosts this endpoint path.</dd>
+        <dt>Auth <span class="property-type">mcp-auth</span></dt>
+        <dd>Optional OIDC auth configuration used when this endpoint requires OAuth.</dd>
         <dt>MCP Name <span class="property-type">string</span></dt>
         <dd>Name returned in MCP initialize responses and used for endpoint-scoped tool registration.</dd>
         <dt>MCP Path <span class="property-type">string</span></dt>
         <dd>HTTP JSON-RPC path served by this endpoint, for example <code>/internal/mcp/ops</code>.</dd>
+        <dt>Auth Mode <span class="property-type">string</span></dt>
+        <dd>Controls whether this endpoint is public or requires OAuth. Inherit uses the selected auth config state.</dd>
+        <dt>Allowed Groups <span class="property-type">string</span></dt>
+        <dd>Optional any-of group list checked against the authenticated user claims.</dd>
+        <dt>Required Scopes <span class="property-type">string</span></dt>
+        <dd>Optional scopes required for every tool on this endpoint.</dd>
         <dt>Base Scopes <span class="property-type">string</span></dt>
         <dd>Space- or comma-separated scopes advertised on tools exposed by this endpoint.</dd>
         <dt>Picker App <span class="property-type">boolean</span></dt>
