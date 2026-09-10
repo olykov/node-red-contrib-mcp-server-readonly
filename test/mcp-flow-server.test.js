@@ -381,6 +381,30 @@ describe('upstream mcp-flow-server local extensions', () => {
         }
     });
 
+    it('serves root protected resource metadata for a single OAuth endpoint', async () => {
+        const authNode = { id: 'auth-1', enabled: true, baseScopes: 'openid profile email', readAccessToken: async () => null };
+        const { server } = buildServer({
+            auth: 'auth-1',
+            authMode: 'oauth',
+            enablePicker: false,
+            __nodes: { 'auth-1': authNode },
+            __runtime: { serverPort: 18111, publicBaseUrl: 'https://mcp.example.test' }
+        });
+
+        await new Promise((resolve, reject) => server.startServer(error => error ? reject(error) : resolve()));
+        try
+        {
+            const res = await fetch('http://127.0.0.1:18111/.well-known/oauth-protected-resource', { headers: { host: 'mcp.example.test' } });
+            const body = await res.json();
+            assert.strictEqual(res.status, 200);
+            assert.strictEqual(body.resource, 'https://mcp.example.test/mcp/test');
+            assert.deepStrictEqual(body.authorization_servers, ['https://mcp.example.test/.well-known/oauth-authorization-server/auth-1']);
+        } finally
+        {
+            await new Promise(resolve => server.stopServer(() => resolve()));
+        }
+    });
+
     it('allows initialize with a valid endpoint-scoped access token', async () => {
         const authNode = {
             id: 'auth-1',

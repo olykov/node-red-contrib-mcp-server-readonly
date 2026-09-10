@@ -144,8 +144,13 @@ module.exports = function (RED)
 
         state.app.get(/^\/\.well-known\/oauth-protected-resource(\/.*)?$/, (req, res) =>
         {
-            const serverPath = req.params && req.params[0] ? normalizePath(req.params[0]) : normalizePath(req.query.resource || '');
-            const node = state.routes.get(serverPath);
+            const requestedPath = req.params && req.params[0] ? req.params[0] : req.query.resource || '';
+            const serverPath = requestedPath ? normalizePath(requestedPath) : '';
+            const node = serverPath ? state.routes.get(serverPath) : (() =>
+            {
+                const protectedNodes = Array.from(state.routes.values()).filter(candidate => isAuthRequired(candidate));
+                return protectedNodes.length === 1 ? protectedNodes[0] : null;
+            })();
             if (!node || !isAuthRequired(node)) return res.status(404).json({ error: 'MCP protected resource not found' });
             res.json(protectedResourceMetadata(req, node));
         });
